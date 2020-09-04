@@ -27,14 +27,11 @@ class AugmentedSequence(Sequence):
             self.data.append(
                 (
                     im,
-                    SegmentationMapsOnImage(im, im.shape),
+                    SegmentationMapsOnImage(get_mask(pid), im.shape),
                     HeatmapsOnImage(get_weight_map(pid).astype(np.float32), im.shape),
                 )
             )
 
-        print(np.shape(self.data[0][0]))
-        print(np.shape(self.data[0][1]))
-        print(np.shape(self.data[0][2]))
         self.batch_size = batch_size
         self.aug = aug
         self.data_size = len(patient_ids)
@@ -55,17 +52,16 @@ class AugmentedSequence(Sequence):
         )
         augmasks = [m.get_arr() for m in augmasks]
         augwmaps = [m.get_arr() for m in augwmaps]
-        print(np.shape(augims))
-        print(np.shape(augmasks))
-        print(np.shape(augwmaps))
 
         augims = np.asarray(augims)
-        #augmasks = np.asarray(augmasks).reshape(
-        #    (self.batch_size, self.img_height, self.img_width, 1)
-        #)
-        #augwmaps = np.asarray(augwmaps).reshape(
-        #    (self.batch_size, self.img_height, self.img_width, 1)
-        #)
+        augmasks = np.asarray(augmasks)
+        augwmaps = np.asarray(augwmaps)
+        augmasks = np.asarray(augmasks).reshape(
+            (self.batch_size, self.img_height, self.img_width, 1)
+        )
+        augwmaps = np.asarray(augwmaps).reshape(
+            (self.batch_size, self.img_height, self.img_width, 1)
+        )
 
         return augims, augmasks, augwmaps
 

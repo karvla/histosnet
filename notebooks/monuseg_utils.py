@@ -90,10 +90,7 @@ def generate_weight_map(pid, im, annots, mask):
     dims = im.shape[:2]
     weight_map = np.zeros(dims)
 
-    if len(annots) >= 3:
-        polygons = list(map(geo.Polygon, annots))
-    else:
-        polygons = []
+    polygons = [geo.Polygon(annot) for annot in annots if len(annot) >= 3]
     # loop over all points in image
     for x, y in it.product(range(dims[0]), range(dims[1])):
         # continue if point is inside a cell
@@ -200,17 +197,14 @@ def parse_annotations(annotations):
 def generate_mask(annotations, shape):
     img = Image.new("L", shape, 0)
     for annotation in annotations:
-        try:
-            ImageDraw.Draw(img).polygon(annotation["vertices"], outline=1, fill=1)
-        except:
-            print(annotation)
+            ImageDraw.Draw(img).polygon(annotation, outline=1, fill=1)
     return np.array(img)
 
 
 def generate_perimeter_mask(annotations, shape):
     img = Image.new("L", shape, 0)
     for annotation in annotations:
-        ImageDraw.Draw(img).polygon(annotation["vertices"], outline=1, fill=0)
+        ImageDraw.Draw(img).polygon(annotation, outline=1, fill=0)
     return np.array(img)
 
 

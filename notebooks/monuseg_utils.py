@@ -3,6 +3,8 @@ from skimage.draw import polygon
 from PIL import Image, ImageDraw
 from skimage.io import imread, imshow
 from skimage.transform import resize
+from skimage.measure import label
+from scipy.ndimage.morphology import distance_transform_edt
 from pathlib import Path
 from tqdm import tqdm
 from joblib import Memory
@@ -11,12 +13,12 @@ import shapely.geometry as geo
 import itertools as it
 
 memory = Memory("./cache", verbose=0)
-imdir = Path(__file__).parent / "data/MoNuSeg Training Data/Tissue Images"
-annotation_dir = Path(__file__).parent / "data/MoNuSeg Training Data/Annotations"
+imdir = Path(__file__).parent.parent / "data/MoNuSeg Training Data/Tissue Images"
+annotation_dir = Path(__file__).parent.parent / "data/MoNuSeg Training Data/Annotations"
 
 
 @memory.cache
-def get_mask(patient_id, shape=(256, 256)):
+def get_mask(patient_id, shape=(1000, 1000)):
     return generate_binary_mask(get_annotation(patient_id), shape)
 
 
@@ -27,17 +29,71 @@ def get_annotation(patient_id):
 
 @memory.cache
 def get_weight_map(patient_id):
-    return generate_weight_map(
-        patient_id, load_image(patient_id), get_annotation(patient_id), get_mask(patient_id)
-    )
+    return unet_weight_map(get_mask(patient_id))
+    #return generate_weight_map(
+    #    patient_id, load_image(patient_id), get_annotation(patient_id), get_mask(patient_id)
+    #)
 
+# Stolen from https://stackoverflow.com/a/53179982
+def unet_weight_map(mask, wc=None, w0 = 10, sigma = 5):
+
+    """
+    Generate weight maps as specified in the U-Net paper
+    for boolean mask.
+
+    "U-Net: Convolutional Networks for Biomedical Image Segmentation"
+    https://arxiv.org/pdf/1505.04597.pdf
+
+    Parameters
+    ----------
+    mask: Numpy array
+        2D array of shape (image_height, image_width) representing binary mask
+        of objects.
+    wc: dict
+        Dictionary of weight classes.
+    w0: int
+        Border weight parameter.
+    sigma: int
+        Border width parameter.
+
+    Returns
+    -------
+    Numpy array
+        Training weights. A 2D array of shape (image_height, image_width).
+    """
+
+    labels = label(mask)
+    no_labels = labels == 0
+    label_ids = sorted(np.unique(labels))[1:]
+
+    if len(label_ids) > 1:
+        distances = np.zeros((mask.shape[0], mask.shape[1], len(label_ids)))
+
+        for i, label_id in enumerate(label_ids):
+            distances[:,:,i] = distance_transform_edt(labels != label_id)
+
+        distances = np.sort(distances, axis=2)
+        d1 = distances[:,:,0]
+        d2 = distances[:,:,1]
+        w = w0 * np.exp(-1/2*((d1 + d2) / sigma)**2) * no_labels
+    else:
+        w = np.zeros_like(mask)
+    if wc:
+        class_weights = np.zeros_like(mask)
+        for k, v in wc.items():
+            class_weights[mask == k] = v
+        w = w + class_weights
+    return w
 
 def generate_weight_map(pid, im, annots, mask):
     print(f"Starting processing of {pid}")
     dims = im.shape[:2]
     weight_map = np.zeros(dims)
 
-    polygons = list(map(geo.Polygon, annots))
+    if len(annots) >= 3:
+        polygons = list(map(geo.Polygon, annots))
+    else:
+        polygons = []
     # loop over all points in image
     for x, y in it.product(range(dims[0]), range(dims[1])):
         # continue if point is inside a cell

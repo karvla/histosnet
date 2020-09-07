@@ -54,7 +54,7 @@ class AugmentedSequence(Sequence):
         augwmaps = [m.get_arr() for m in augwmaps]
 
         augims = np.asarray(augims)
-        augmasks = np.asarray(augmasks)
+        augmasks = np.asarray(augmasks, dtype=np.float32)
         augwmaps = np.asarray(augwmaps)
         augmasks = np.asarray(augmasks).reshape(
             (self.batch_size, self.img_height, self.img_width, 1)
@@ -63,7 +63,7 @@ class AugmentedSequence(Sequence):
             (self.batch_size, self.img_height, self.img_width, 1)
         )
 
-        return augims, augmasks, augwmaps
+        return (augims, augwmaps), augmasks
 
     def __repr__(self):
         tmp_str = "\n\t".join(self.patient_ids)

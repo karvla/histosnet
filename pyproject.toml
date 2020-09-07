@@ -19,6 +19,8 @@ opencv-python = "^4.4.0"
 keras = "^2.4.3"
 tensorflow-gpu = "^2.3.0"
 jupyterlab = "^2.2.6"
+sklearn = "^0.0"
+wandb = "^0.9.6"
 
 [tool.poetry.dev-dependencies]
 

@@ -13,8 +13,8 @@ import shapely.geometry as geo
 import itertools as it
 
 memory = Memory("./cache", verbose=0)
-imdir = Path(__file__).parent.parent / "data/MoNuSeg Training Data/Tissue Images"
-annotation_dir = Path(__file__).parent.parent / "data/MoNuSeg Training Data/Annotations"
+imdir = Path(__file__).parent.parent / "data/monuseg/images"
+annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
 
 
 @memory.cache
@@ -30,9 +30,6 @@ def get_annotation(patient_id):
 @memory.cache
 def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
-    #return generate_weight_map(
-    #    patient_id, load_image(patient_id), get_annotation(patient_id), get_mask(patient_id)
-    #)
 
 # Stolen from https://stackoverflow.com/a/53179982
 def unet_weight_map(mask, wc=None, w0 = 10, sigma = 5):

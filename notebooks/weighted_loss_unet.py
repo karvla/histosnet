@@ -34,15 +34,13 @@ def my_loss(target, output):
                            len(output.get_shape()) - 1)
 
 
-def make_weighted_loss_unet(input_shape, n_classes):
-    # two inputs, one for the image and one for the weight maps
+def make_weighted_loss_unet(input_shape, n_classes, is_training=True):
     ip = L.Input(shape=input_shape)
-    # the shape of the weight maps has to be such that it can be element-wise
-    # multiplied to the softmax output.
-    weight_ip = L.Input(shape=input_shape[:2] + (n_classes,))
+    s = L.Lambda(lambda x: x / 255) (ip)
+
 
     # adding the layers
-    conv1 = L.Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(ip)
+    conv1 = L.Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(s)
     conv1 = L.Conv2D(64, 3, activation='relu', padding='same', kernel_initializer='he_normal')(conv1)
     conv1 = L.Dropout(0.1)(conv1)
     mpool1 = L.MaxPool2D()(conv1)
@@ -95,10 +93,14 @@ def make_weighted_loss_unet(input_shape, n_classes):
     # Add a few non trainable layers to mimic the computation of the crossentropy
     # loss, so that the actual loss function just has to peform the
     # aggregation.
-    c11 = L.Lambda(lambda x: x / tf.reduce_sum(x, len(x.get_shape()) - 1, True))(c10)
-    c11 = L.Lambda(lambda x: tf.clip_by_value(x, _epsilon, 1. - _epsilon))(c11)
-    c11 = L.Lambda(lambda x: K.log(x))(c11)
-    weighted_sm = L.multiply([c11, weight_ip])
+    if is_training:
+        c11 = L.Lambda(lambda x: x / tf.reduce_sum(x, len(x.get_shape()) - 1, True))(c10)
+        c11 = L.Lambda(lambda x: tf.clip_by_value(x, _epsilon, 1. - _epsilon))(c11)
+        c11 = L.Lambda(lambda x: K.log(x))(c11)
+        weight_ip = L.Input(shape=input_shape[:2] + (n_classes,))
+        weighted_sm = L.multiply([c11, weight_ip])
 
-    model = Model(inputs=[ip, weight_ip], outputs=[weighted_sm])
-    return model
+        return Model(inputs=[ip, weight_ip], outputs=[weighted_sm])
+    else:
+
+        return Model(inputs=[ip], outputs=[c10])

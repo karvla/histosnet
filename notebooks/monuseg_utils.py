@@ -11,16 +11,18 @@ from joblib import Memory
 import numpy as np
 import shapely.geometry as geo
 import itertools as it
+from keras.utils.np_utils import to_categorical
 
 memory = Memory("./cache", verbose=0)
 imdir = Path(__file__).parent.parent / "data/monuseg/images"
 annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
 
+def get_categorical_mask(patient_id):
+    return to_categorical(get_mask(patient_id))
 
 @memory.cache
 def get_mask(patient_id, shape=(1000, 1000)):
     return generate_binary_mask(get_annotation(patient_id), shape)
-
 
 @memory.cache
 def get_annotation(patient_id):

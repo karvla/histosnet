@@ -9,7 +9,7 @@ from imgaug.augmentables.heatmaps import HeatmapsOnImage
 from pathlib import Path
 from skimage.io import imread
 
-from monuseg_utils import load_image, get_mask, get_weight_map
+from utils import load_image, get_mask, get_weight_map
 
 
 class AugmentedSequence(Sequence):

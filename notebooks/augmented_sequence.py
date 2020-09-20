@@ -1,7 +1,7 @@
 import numpy as np
 
 from keras.utils import Sequence
-from keras.utils.np_utils import to_categorical   
+from keras.utils.np_utils import to_categorical
 import imgaug.augmenters as iaa
 from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from imgaug.augmentables.heatmaps import HeatmapsOnImage
@@ -29,7 +29,9 @@ class AugmentedSequence(Sequence):
                 (
                     im,
                     SegmentationMapsOnImage(get_mask(pid), im.shape),
-                    HeatmapsOnImage(get_weight_map(pid).astype(np.float32), im.shape, max_value=10.0),
+                    HeatmapsOnImage(
+                        get_weight_map(pid).astype(np.float32), im.shape, max_value=50
+                    ),
                 )
             )
 
@@ -42,6 +44,12 @@ class AugmentedSequence(Sequence):
     def __len__(self):
         return self.data_size
 
+    def _fix_wmap_dim(self, wmap):
+        wmap = wmap.ravel()
+        wmap = np.array((-wmap, wmap)).T
+        wmap = wmap.reshape((self.img_height, self.img_width, 2))
+        return wmap
+
     def __getitem__(self, idx):
         im, mask, wmap = self.data[idx % self.data_size]
 
@@ -51,22 +59,19 @@ class AugmentedSequence(Sequence):
                 for i in range(self.batch_size)
             ]
         )
+
         augmasks = [to_categorical(m.get_arr()) for m in augmasks]
-        augwmaps = [m.get_arr() for m in augwmaps]
+        augwmaps = [self._fix_wmap_dim(m.get_arr()) for m in augwmaps]
 
         augims = np.asarray(augims)
         augmasks = np.asarray(augmasks, dtype=np.float32)
         augwmaps = np.asarray(augwmaps, dtype=np.float32)
+
         augmasks = np.asarray(augmasks).reshape(
             (self.batch_size, self.img_height, self.img_width, 2)
         )
-        augwmaps = np.asarray((augwmaps, augwmaps)).reshape(
-            (self.batch_size, self.img_height, self.img_width, 2)
-        )
-        
 
         return (augims, augwmaps), augmasks
-
 
     def __repr__(self):
         tmp_str = "\n\t".join(self.patient_ids)
@@ -75,4 +80,3 @@ class AugmentedSequence(Sequence):
             + f"batch_size = {self.batch_size}\n"
             + f"ids:\t{tmp_str}"
         )
-

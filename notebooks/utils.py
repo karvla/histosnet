@@ -26,7 +26,7 @@ def get_categorical_mask(patient_id):
 
 @memory.cache
 def get_mask(patient_id, shape=(1000, 1000)):
-    return erode_mask(generate_binary_mask(get_annotation(patient_id), shape))
+    return generate_binary_mask(get_annotation(patient_id), shape)
 
 
 @memory.cache
@@ -68,6 +68,7 @@ def unet_weight_map(mask, w0=10, sigma=5):
     Numpy array
         Training weights. A 2D array of shape (image_height, image_width).
     """
+    mask = erode_mask(mask)
     w = np.zeros_like(mask, dtype=np.float64)
     win_size = 100
     win_shape = (mask.shape[0], win_size)
@@ -88,7 +89,7 @@ def unet_weight_map(mask, w0=10, sigma=5):
             * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
             * no_labels
         )
-    return w
+    return w + mask
 
 
 def xml_annotations_to_dict(filepaths: list):

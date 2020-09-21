@@ -5,3 +5,4 @@ notebooks/.ipynb_checkpoints/
 notebooks/__pycache__/
 notebooks/cache/*
 notebooks/wandb/
+data/monuseg/cropped*

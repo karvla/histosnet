@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 from skimage.io import imread, imshow
 from skimage.transform import resize
 from skimage.measure import label
+from skimage.morphology import binary_erosion, diamond
 from scipy.ndimage.morphology import distance_transform_edt
 from pathlib import Path
 from tqdm import tqdm
@@ -18,12 +19,15 @@ memory = Memory("./cache", verbose=0)
 imdir = Path(__file__).parent.parent / "data/monuseg/images"
 annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
 
+
 def get_categorical_mask(patient_id):
     return to_categorical(get_mask(patient_id))
 
+
 @memory.cache
 def get_mask(patient_id, shape=(1000, 1000)):
-    return generate_binary_mask(get_annotation(patient_id), shape)
+    return erode_mask(generate_binary_mask(get_annotation(patient_id), shape))
+
 
 @memory.cache
 def get_annotation(patient_id):
@@ -34,8 +38,13 @@ def get_annotation(patient_id):
 def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
 
-# Stolen from https://stackoverflow.com/a/53179982
-def unet_weight_map(mask, wc=None, w0 = 10, sigma = 5):
+
+def erode_mask(mask):
+    return binary_erosion(mask, diamond(1))
+
+
+# based on https://stackoverflow.com/a/53179982
+def unet_weight_map(mask, w0=10, sigma=5):
 
     """
     Generate weight maps as specified in the U-Net paper
@@ -49,8 +58,6 @@ def unet_weight_map(mask, wc=None, w0 = 10, sigma = 5):
     mask: Numpy array
         2D array of shape (image_height, image_width) representing binary mask
         of objects.
-    wc: dict
-        Dictionary of weight classes.
     w0: int
         Border weight parameter.
     sigma: int
@@ -61,66 +68,27 @@ def unet_weight_map(mask, wc=None, w0 = 10, sigma = 5):
     Numpy array
         Training weights. A 2D array of shape (image_height, image_width).
     """
+    w = np.zeros_like(mask, dtype=np.float64)
+    win_size = 100
+    win_shape = (mask.shape[0], win_size)
+    for j in range(0, 1000, win_size):
+        labels = label(mask[:,j:j+win_size])
+        no_labels = labels == 0
+        label_ids = sorted(np.unique(labels))[1:]
 
-    labels = label(mask)
-    no_labels = labels == 0
-    label_ids = sorted(np.unique(labels))[1:]
-
-    if len(label_ids) > 1:
-        distances = np.zeros((mask.shape[0], mask.shape[1], len(label_ids)))
+        distances = np.zeros((win_shape +  (len(label_ids),)))
 
         for i, label_id in enumerate(label_ids):
-            distances[:,:,i] = distance_transform_edt(labels != label_id)
+            distances[:, :, i] = distance_transform_edt(labels != label_id)
 
+        label_ids = None
         distances = np.sort(distances, axis=2)
-        d1 = distances[:,:,0]
-        d2 = distances[:,:,1]
-        w = w0 * np.exp(-1/2*((d1 + d2) / sigma)**2) * no_labels
-    else:
-        w = np.zeros_like(mask)
-    if wc:
-        class_weights = np.zeros_like(mask)
-        for k, v in wc.items():
-            class_weights[mask == k] = v
-        w = w + class_weights
+        w[:,j:j+win_size] = (
+            w0
+            * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
+            * no_labels
+        )
     return w
-
-def generate_weight_map(pid, im, annots, mask):
-    print(f"Starting processing of {pid}")
-    dims = im.shape[:2]
-    weight_map = np.zeros(dims)
-
-    polygons = [geo.Polygon(annot) for annot in annots if len(annot) >= 3]
-    # loop over all points in image
-    for x, y in it.product(range(dims[0]), range(dims[1])):
-        # continue if point is inside a cell
-        if mask[x, y]:
-            weight_map[x, y] = 0
-        else:
-            point = geo.Point(x, y)
-            d1, d2 = 10 ** 8, 10 ** 8
-            for poly in polygons:
-                distance = poly.distance(point)
-                if distance < d1:
-                    d2 = d1
-                    d1 = distance
-                elif distance < d2:
-                    d2 = distance
-            weight_map[int(point.y), int(point.x)] = (d1 + d2) ** 2
-
-    return dsmap_to_weight_ma(weight_map)
-
-
-def dsmap_to_weight_map(dsmap, w0=10, sigma=5):
-    """
-    Converts a dsmap to a weight map. A dsmap is a 2D array with the value of
-    (d1 + d2)^2 for each pixel in an image, where d1 and d2 are the distances to the two cells
-    in the image closest to that pixel. Returns the array as weight map following
-    the same algorithm as the original UNET paper. I.e.
-    w0 * np.exp(-dsmap/(2*sigma**2))
-    """
-
-    return w0 * np.exp(-dsmap / (2 * sigma ** 2))
 
 
 def xml_annotations_to_dict(filepaths: list):
@@ -197,7 +165,7 @@ def parse_annotations(annotations):
 def generate_mask(annotations, shape):
     img = Image.new("L", shape, 0)
     for annotation in annotations:
-            ImageDraw.Draw(img).polygon(annotation, outline=1, fill=1)
+        ImageDraw.Draw(img).polygon(annotation, outline=0, fill=1)
     return np.array(img)
 
 
@@ -236,8 +204,12 @@ def bounding_box(vertices):
     x, y = zip(*vertices)
     return (min(x), min(y)), (max(x), max(y))
 
+
 def val_split(ids, val_ratio=0.2):
     ids = list(ids)
     random.shuffle(ids)
-    k = round(len(ids)*val_ratio)
+    k = round(len(ids) * val_ratio)
     return ids[k:], ids[:k]
+
+if __name__ == "__main__":
+    print(get_weight_map("TCGA-18-5592-01Z-00-DX1"))

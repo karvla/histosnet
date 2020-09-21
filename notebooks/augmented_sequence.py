@@ -30,7 +30,7 @@ class AugmentedSequence(Sequence):
                     im,
                     SegmentationMapsOnImage(get_mask(pid), im.shape),
                     HeatmapsOnImage(
-                        get_weight_map(pid).astype(np.float32), im.shape, max_value=50
+                        get_weight_map(pid).astype(np.float32), im.shape, max_value=10
                     ),
                 )
             )
@@ -46,7 +46,7 @@ class AugmentedSequence(Sequence):
 
     def _fix_wmap_dim(self, wmap):
         wmap = wmap.ravel()
-        wmap = np.array((-wmap, wmap)).T
+        wmap = np.array((np.ones(wmap.shape), wmap)).T
         wmap = wmap.reshape((self.img_height, self.img_width, 2))
         return wmap
 

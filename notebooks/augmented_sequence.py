@@ -8,14 +8,14 @@ from imgaug.augmentables.heatmaps import HeatmapsOnImage
 
 from pathlib import Path
 from skimage.io import imread
-
-from utils import load_image, get_mask, get_weight_map
+from dataset import Dataset
+from utils import get_mask, get_weight_map
 
 
 class AugmentedSequence(Sequence):
     def __init__(
         self,
-        patient_ids,
+        dataset : Dataset,
         batch_size,
         aug: iaa.Sequential,
         img_width,
@@ -23,8 +23,8 @@ class AugmentedSequence(Sequence):
     ):
 
         self.data = []
-        for pid in patient_ids:
-            im = load_image(pid)
+        for pid in dataset.ids:
+            im = dataset.load_image(pid)
             self.data.append(
                 (
                     im,
@@ -37,7 +37,7 @@ class AugmentedSequence(Sequence):
 
         self.batch_size = batch_size
         self.aug = aug
-        self.data_size = len(patient_ids)
+        self.data_size = len(dataset.ids)
         self.img_width = img_width
         self.img_height = img_height
 

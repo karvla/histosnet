@@ -14,24 +14,22 @@ import numpy as np
 import shapely.geometry as geo
 import itertools as it
 from keras.utils.np_utils import to_categorical
+import json
 
 memory = Memory("./cache", verbose=0)
-imdir = Path(__file__).parent.parent / "data/monuseg/images"
-annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
-
-
-def get_categorical_mask(patient_id):
-    return to_categorical(get_mask(patient_id))
-
 
 @memory.cache
 def get_mask(patient_id, shape=(1000, 1000)):
-    return generate_binary_mask(get_annotation(patient_id), shape)
-
+    return generate_binary_mask(get_annotation_monuseg(patient_id), shape)
 
 @memory.cache
-def get_annotation(patient_id):
+def get_annotation_monuseg(patient_id):
+    annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
     return parse_xml_annotation_file(annotation_dir / f"{patient_id}.xml")
+
+def get_annotation_swebcg(patient_id):
+    annotations = Path(__file__).parent.parent / "data/swebcg/annotations.json"
+    return parse_annotations(json.load(annotation)[patient_id])
 
 
 @memory.cache
@@ -90,39 +88,6 @@ def unet_weight_map(mask, w0=10, sigma=5):
             * no_labels
         )
     return w + mask
-
-
-def xml_annotations_to_dict(filepaths: list):
-    """
-    Produces an annotation dictionary from a list of paths to .xml files
-    formatted in the monuseg format.
-    """
-    print("Parsing .xml files to dict...")
-    annotations = dict()
-    for fp in tqdm(map(Path, filepaths), total=len(filepaths)):
-        annots = [{"vertices": a} for a in parse_xml_annotation_file(fp)]
-        annotations[fp.stem] = annots
-    return annotations
-
-
-def discard_points(annotations: dict):
-    """
-    Discards all annotations consisting of only one vertex.
-
-    Args:
-        annotations: Dict with ids as keys and lists of lists of vertices as values.
-
-    Returns:
-        dict: Annotation dict with same sturcture but with no single point annotations.
-    """
-    print("Discarding points form annotations dict...")
-    for patient, annots in tqdm(annotations.items()):
-        for ind, annot in enumerate(annots):
-            if len(annot["vertices"]) <= 2:
-                annots.pop(ind)
-            else:
-                annot["vertices"] = list(map(tuple, annot["vertices"]))
-    return annotations
 
 
 def parse_xml_annotation_file(filepath):
@@ -197,20 +162,7 @@ def draw_annotations(image, annotation, copy=False):
     return image
 
 
-def load_image(patient_id):
-    return imread(Path(imdir, patient_id + ".png"))
-
-
 def bounding_box(vertices):
     x, y = zip(*vertices)
     return (min(x), min(y)), (max(x), max(y))
 
-
-def val_split(ids, val_ratio=0.2):
-    ids = list(ids)
-    random.shuffle(ids)
-    k = round(len(ids) * val_ratio)
-    return ids[k:], ids[:k]
-
-if __name__ == "__main__":
-    print(get_weight_map("TCGA-18-5592-01Z-00-DX1"))

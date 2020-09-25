@@ -10,12 +10,13 @@ from pathlib import Path
 from skimage.io import imread
 from dataset import Dataset
 from utils import get_mask, get_weight_map
+from typing import List
 
 
 class AugmentedSequence(Sequence):
     def __init__(
         self,
-        dataset : Dataset,
+        datasets : List[Dataset],
         batch_size,
         aug: iaa.Sequential,
         img_width,
@@ -23,17 +24,18 @@ class AugmentedSequence(Sequence):
     ):
 
         self.data = []
-        for pid in dataset.ids:
-            im = dataset.load_image(pid)
-            self.data.append(
-                (
-                    im,
-                    SegmentationMapsOnImage(get_mask(pid), im.shape),
-                    HeatmapsOnImage(
-                        get_weight_map(pid).astype(np.float32), im.shape, max_value=10
-                    ),
+        for dataset in datasets:
+            for pid in dataset.ids:
+                im = dataset.load_image(pid)
+                self.data.append(
+                    (
+                        im,
+                        SegmentationMapsOnImage(dataset.get_mask(pid), im.shape),
+                        HeatmapsOnImage(
+                            dataset.get_weight_map(pid).astype(np.float32), im.shape, max_value=10
+                        ),
+                    )
                 )
-            )
 
         self.batch_size = batch_size
         self.aug = aug
@@ -60,7 +62,7 @@ class AugmentedSequence(Sequence):
             ]
         )
 
-        augmasks = [to_categorical(m.get_arr()) for m in augmasks]
+        augmasks = [to_categorical(m.get_arr(), num_classes = 2) for m in augmasks]
         augwmaps = [self._fix_wmap_dim(m.get_arr()) for m in augwmaps]
 
         augims = np.asarray(augims)

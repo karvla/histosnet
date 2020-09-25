@@ -8,6 +8,9 @@ from typing import Optional, List
 from copy import copy
 from skimage.io import imread
 import json
+import nibabel as nib
+import numpy as np
+#from imantics import Polygons, Mask
 
 memory = Memory("./cache", verbose=0)
 
@@ -21,6 +24,9 @@ class Dataset:
     @property
     def size(self):
         return len(self.ids)
+
+    def __getitem__(self, idx):
+        return self.load_image(self.ids[idx])
 
     def file_name(self, image_id):
         return str(self.image_dir / f"{image_id}.png")
@@ -41,9 +47,6 @@ class Dataset:
         test_set.ids = self.ids[~train_index]
         return train_set, test_set
 
-    def get_annotation(self, image_id):
-        pass
-            
         
  
 class Monuseg(Dataset):
@@ -51,7 +54,13 @@ class Monuseg(Dataset):
         super().__init__(Path(__file__).parent.parent / 'data/monuseg/')
         
     def get_annotation(self, patient_id : str):
-        return utils.get_annotation_monuseg(patient_id)
+        return utils.annnoations_monuseg(patient_id)
+
+    def get_mask(self, patient_id : str):
+        return utils.get_mask(patient_id)
+
+    def get_weight_map(self, patient_id : str):
+        return utils.get_weight_map(patient_id)
 
 class Swebcg(Dataset):
     def __init__(self):
@@ -63,12 +72,33 @@ class Swebcg(Dataset):
     def get_annotation(self, patient_id : str):
         return [cell["vertices"] for cell in self.annotations[patient_id]]
 
+class Bns(Dataset):
+    def __init__(self):
+        super().__init__(Path(__file__).parent.parent / 'data/bns/')
+
+    def load_image(self, image_id):
+        return imread(self.image_dir / f"{image_id}.png")[...,0:3] # skipping alpha
+
+
+    def get_mask(self, image_id):
+        mask = nib.load(self.path / f"masks/{image_id}.nii.gz").get_fdata() > 0
+        mask = np.transpose(mask, axes=(1, 0, 2))[...,0]
+        return mask.astype(np.int8)
+
+    def get_weight_map(self, image_id):
+        return utils.get_weight_map_bns(image_id)
+
+    
+    def get_annotation(self, image_id):
+        anno = nib.load(self.path / f"masks/{image_id}.nii.gz").get_fdata()
+        poly = Mask(anno).polygons()
+        return poly.points
+
+        
+
 
 
 if __name__ == "__main__":        
-    monuseg = Monuseg() 
-    pid = monuseg.ids[0]
-    monuseg.get_annotation(pid)
-    swebcg = Swebcg()
-    print(swebcg.get_annotation(swebcg.ids[0]))
+    bns = Bns()
+    print(bns.get_annotation(bns.ids[0]))
         

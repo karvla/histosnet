@@ -15,6 +15,7 @@ import shapely.geometry as geo
 import itertools as it
 from keras.utils.np_utils import to_categorical
 import json
+import dataset
 
 memory = Memory("./cache", verbose=0)
 
@@ -36,13 +37,17 @@ def get_annotation_swebcg(patient_id):
 def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
 
+@memory.cache
+def get_weight_map_bns(image_id):
+    return unet_weight_map(dataset.Bns().get_annotation(image_id))
+
 
 def erode_mask(mask):
     return binary_erosion(mask, diamond(1))
 
 
 # based on https://stackoverflow.com/a/53179982
-def unet_weight_map(mask, w0=10, sigma=5):
+def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
 
     """
     Generate weight maps as specified in the U-Net paper
@@ -56,6 +61,8 @@ def unet_weight_map(mask, w0=10, sigma=5):
     mask: Numpy array
         2D array of shape (image_height, image_width) representing binary mask
         of objects.
+    win_size: int
+        Size of window for calculating the weight mask in chunks.
     w0: int
         Border weight parameter.
     sigma: int
@@ -68,9 +75,8 @@ def unet_weight_map(mask, w0=10, sigma=5):
     """
     mask = erode_mask(mask)
     w = np.zeros_like(mask, dtype=np.float64)
-    win_size = 100
     win_shape = (mask.shape[0], win_size)
-    for j in range(0, 1000, win_size):
+    for j in range(0, mask.shape[1], win_size):
         labels = label(mask[:,j:j+win_size])
         no_labels = labels == 0
         label_ids = sorted(np.unique(labels))[1:]

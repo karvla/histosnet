@@ -10,9 +10,11 @@ from skimage.io import imread
 import json
 import nibabel as nib
 import numpy as np
-#from imantics import Polygons, Mask
+import regex as re
+from imantics import Polygons, Mask
 
 memory = Memory("./cache", verbose=0)
+
 
 class Dataset:
     def __init__(self, path : Path):
@@ -46,7 +48,6 @@ class Dataset:
         test_set = copy(self)
         test_set.ids = self.ids[~train_index]
         return train_set, test_set
-
         
  
 class Monuseg(Dataset):
@@ -62,6 +63,7 @@ class Monuseg(Dataset):
     def get_weight_map(self, patient_id : str):
         return utils.get_weight_map(patient_id)
 
+
 class Swebcg(Dataset):
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / 'data/swebcg/')
@@ -71,6 +73,7 @@ class Swebcg(Dataset):
 
     def get_annotation(self, patient_id : str):
         return [cell["vertices"] for cell in self.annotations[patient_id]]
+
 
 class Bns(Dataset):
     def __init__(self):
@@ -94,11 +97,55 @@ class Bns(Dataset):
         poly = Mask(anno).polygons()
         return poly.points
 
+
+class Quip(Dataset):
+    def __init__(self):
+        self.path = Path(__file__).parent.parent / 'data/quip'
+        self.image_dir = self.path / 'images'
+        self.anno_dir = self.path / 'annotations'
+        self.slides = {}
+        for root, _, files in os.walk(self.image_dir):
+            for name in files:
+                if name[-3:] == "svs":
+                    self.slides[name[:-4].upper()] = os.path.join(root, name)
+
+        self.annotations = {}
+        for root, dirs, files in os.walk(self.anno_dir):
+            for name in files:
+                if name[-3:] == "csv":
+                    slide_id = Path(root).stem.upper()
+                    if slide_id in self.annotations:
+                        self.annotations[slide_id].append({"file_name" : name, "region" : self._region(name)})
+                    else:
+                        self.annotations[slide_id] = [{"file_name" : name, "region" : self._region(name)}]
+
+        self.ids = []
+        for key, item in self.annotations.items():
+            if key in self.slides:
+                self.ids.append[key]
+
+    @property
+    def _anno_ids(self):
+        return [Path(f.upper()).stem[:-8] for f in os.listdir(self.anno_dir)]
+
+    @property
+    def _slide_ids(self):
+        return [f for f in os.walk(self.image_dir)]
+
+    def _region(self, file_name):
+        x, y, width, height = re.findall(
+                r"(\d*)_(\d*)_(\d*)_(\d*)", file_name)[0]
+        return int(x), int(y), int(width), int(height)
+
+
         
 
 
 
 if __name__ == "__main__":        
-    bns = Bns()
-    print(bns.get_annotation(bns.ids[0]))
+    quip = Quip()
+    print(list(quip.slides.keys())[0])
+
+    print(list(quip.annotations.keys())[0])
+    print(quip.ids)
         

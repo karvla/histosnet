@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw
 from skimage.io import imread, imshow
 from skimage.transform import resize
 from skimage.measure import label
-from skimage.morphology import binary_erosion, diamond
+from skimage.morphology import binary_erosion, square
 from scipy.ndimage.morphology import distance_transform_edt
 from pathlib import Path
 from tqdm import tqdm
@@ -19,14 +19,17 @@ import dataset
 
 memory = Memory("./cache", verbose=0)
 
+
 @memory.cache
 def get_mask(patient_id, shape=(1000, 1000)):
     return generate_binary_mask(get_annotation_monuseg(patient_id), shape)
+
 
 @memory.cache
 def get_annotation_monuseg(patient_id):
     annotation_dir = Path(__file__).parent.parent / "data/monuseg/annotations"
     return parse_xml_annotation_file(annotation_dir / f"{patient_id}.xml")
+
 
 def get_annotation_swebcg(patient_id):
     annotations = Path(__file__).parent.parent / "data/swebcg/annotations.json"
@@ -37,13 +40,19 @@ def get_annotation_swebcg(patient_id):
 def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
 
+
 @memory.cache
 def get_weight_map_bns(image_id):
     return unet_weight_map(dataset.Bns().get_annotation(image_id))
 
 
 def erode_mask(mask):
-    return binary_erosion(mask, diamond(1))
+    return binary_erosion(mask, square(5))
+
+
+def get_boundary_mask(mask):
+    """ Returns mask where 0 is background, 1 in inside and 2 is boundary """
+    return 2 * mask - erode_mask(mask)
 
 
 # based on https://stackoverflow.com/a/53179982
@@ -77,18 +86,18 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
     w = np.zeros_like(mask, dtype=np.float64)
     win_shape = (mask.shape[0], win_size)
     for j in range(0, mask.shape[1], win_size):
-        labels = label(mask[:,j:j+win_size])
+        labels = label(mask[:, j : j + win_size])
         no_labels = labels == 0
         label_ids = sorted(np.unique(labels))[1:]
 
-        distances = np.zeros((win_shape +  (len(label_ids),)))
+        distances = np.zeros((win_shape + (len(label_ids),)))
 
         for i, label_id in enumerate(label_ids):
             distances[:, :, i] = distance_transform_edt(labels != label_id)
 
         label_ids = None
         distances = np.sort(distances, axis=2)
-        w[:,j:j+win_size] = (
+        w[:, j : j + win_size] = (
             w0
             * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
             * no_labels
@@ -171,4 +180,3 @@ def draw_annotations(image, annotation, copy=False):
 def bounding_box(vertices):
     x, y = zip(*vertices)
     return (min(x), min(y)), (max(x), max(y))
-

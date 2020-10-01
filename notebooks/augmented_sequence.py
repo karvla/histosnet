@@ -48,8 +48,8 @@ class AugmentedSequence(Sequence):
 
     def _fix_wmap_dim(self, wmap):
         wmap = wmap.ravel()
-        wmap = np.array((np.ones(wmap.shape), wmap)).T
-        wmap = wmap.reshape((self.img_height, self.img_width, 2))
+        wmap = np.array((np.ones(wmap.shape), wmap, wmap)).T
+        wmap = wmap.reshape((self.img_height, self.img_width, 3))
         return wmap
 
     def __getitem__(self, idx):
@@ -62,7 +62,7 @@ class AugmentedSequence(Sequence):
             ]
         )
 
-        augmasks = [to_categorical(m.get_arr(), num_classes = 2) for m in augmasks]
+        augmasks = [to_categorical(m.get_arr(), num_classes = 3) for m in augmasks]
         augwmaps = [self._fix_wmap_dim(m.get_arr()) for m in augwmaps]
 
         augims = np.asarray(augims)
@@ -70,7 +70,7 @@ class AugmentedSequence(Sequence):
         augwmaps = np.asarray(augwmaps, dtype=np.float32)
 
         augmasks = np.asarray(augmasks).reshape(
-            (self.batch_size, self.img_height, self.img_width, 2)
+            (self.batch_size, self.img_height, self.img_width, 3)
         )
 
         return (augims, augwmaps), augmasks

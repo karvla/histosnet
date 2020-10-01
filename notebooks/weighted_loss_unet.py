@@ -6,6 +6,8 @@ from keras import backend as K
 from keras.models import Model
 import tensorflow as tf
 import numpy as np
+from config import Config
+c = Config()
 
 _epsilon = tf.convert_to_tensor(K.epsilon(), np.float32)
 
@@ -34,7 +36,9 @@ def my_loss(target, output):
                            len(output.get_shape()) - 1)
 
 
-def make_weighted_loss_unet(input_shape, n_classes, is_training=True):
+def make_weighted_loss_unet(is_training=True):
+    input_shape = c.SHAPE
+    n_classes = 3 # Background, inside and boundery
     ip = L.Input(shape=input_shape)
     s = L.Lambda(lambda x: x / 255) (ip)
 

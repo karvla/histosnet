@@ -12,7 +12,6 @@ from dataset import Dataset
 from utils import get_mask, get_weight_map
 from typing import List
 
-
 class AugmentedSequence(Sequence):
     def __init__(
         self,

@@ -16,6 +16,8 @@ import itertools as it
 from keras.utils.np_utils import to_categorical
 import json
 import dataset
+from config import Config
+c = Config()
 
 memory = Memory("./cache", verbose=0)
 

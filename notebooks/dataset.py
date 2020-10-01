@@ -13,6 +13,8 @@ import numpy as np
 import regex as re
 from imantics import Polygons, Mask
 import pandas as pd
+from tqdm import tqdm
+from openslide import OpenSlide
 
 memory = Memory("./cache", verbose=0)
 
@@ -110,12 +112,9 @@ class Quip(Dataset):
         self.path = Path(__file__).parent.parent / "data/quip"
         self.image_dir = self.path / "images"
         self.anno_dir = self.path / "annotations"
-        self.slides = {}
-        for root, _, files in os.walk(self.image_dir):
-            for name in files:
-                if name[-3:] == "svs":
-                    self.slides[_submitter_id(name)] = os.path.join(root, name)
+        self.slides = _get_quip_image_index(self.image_dir)
 
+        print(f"Indexing annotations in {self.anno_dir}")
         self.annotations = {}
         for root, dirs, files in os.walk(self.anno_dir):
             for name in files:
@@ -132,7 +131,7 @@ class Quip(Dataset):
         self.ids = []
         for key, item in self.annotations.items():
             if key in self.slides:
-                self.ids.append[key]
+                self.ids.extend([f"{key}_{i['file_name']}" for i in item])
 
     @property
     def _anno_ids(self):
@@ -146,11 +145,31 @@ class Quip(Dataset):
         x, y, width, height = re.findall(r"(\d*)_(\d*)_(\d*)_(\d*)", file_name)[0]
         return int(x), int(y), int(width), int(height)
 
+    def load_image_patch(self, image_id, region):
+        return np.array(
+                OpenSlide(self.slides[image_id]).read_region(region[:2], 1, region[2:])
+                )[...,:3]
+
+    def load_image(self, image_id):
+        print(image_id)
+        region = self._region(image_id)
+        print(region)
+        slide_id = re.findall("[^\_]*", image_id)[0]
+        return self.load_image_patch(slide_id, region)
+
 
 def _submitter_id(file_name : str):
     return  re.findall("[^.]*", file_name)[0]
         
-
+@memory.cache
+def _get_quip_image_index(image_dir):
+    print(f"Indexing images in {image_dir}")
+    slides = {}
+    for root, _, files in tqdm(os.walk(image_dir)):
+        for name in files:
+            if name[-3:] == "svs":
+                slides[_submitter_id(name)] = os.path.join(root, name)
+    return slides
 
 
 if __name__ == "__main__":

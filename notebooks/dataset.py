@@ -12,6 +12,7 @@ import nibabel as nib
 import numpy as np
 import regex as re
 from imantics import Polygons, Mask
+import pandas as pd
 
 memory = Memory("./cache", verbose=0)
 
@@ -74,6 +75,16 @@ class Swebcg(Dataset):
     def get_annotation(self, patient_id : str):
         return [cell["vertices"] for cell in self.annotations[patient_id]]
 
+    def get_dataframe(self):
+        data = []
+        for key, item in utils.parse_annotations(self.annotations).items():
+            if key in self.ids:
+                for cell in item:
+                    data.append({'vertices' : cell['vertices'],
+                                'class' : cell['class'],
+                                'image_id' : key})
+        return pd.DataFrame(data)
+
 
 class Bns(Dataset):
     def __init__(self):
@@ -107,17 +118,19 @@ class Quip(Dataset):
         for root, _, files in os.walk(self.image_dir):
             for name in files:
                 if name[-3:] == "svs":
-                    self.slides[name[:-4].upper()] = os.path.join(root, name)
+                    self.slides[_submitter_id(name)] = os.path.join(root, name)
 
         self.annotations = {}
         for root, dirs, files in os.walk(self.anno_dir):
             for name in files:
                 if name[-3:] == "csv":
-                    slide_id = Path(root).stem.upper()
+                    slide_id = _submitter_id(Path(root).stem.upper())
                     if slide_id in self.annotations:
-                        self.annotations[slide_id].append({"file_name" : name, "region" : self._region(name)})
+                        self.annotations[slide_id].append(
+                                {"file_name" : name, "region" : self._region(name)})
                     else:
-                        self.annotations[slide_id] = [{"file_name" : name, "region" : self._region(name)}]
+                        self.annotations[slide_id] = [
+                                {"file_name" : name, "region" : self._region(name)}]
 
         self.ids = []
         for key, item in self.annotations.items():
@@ -138,6 +151,8 @@ class Quip(Dataset):
         return int(x), int(y), int(width), int(height)
 
 
+def _submitter_id(file_name : str):
+    return  re.findall("[^.]*", file_name)[0]
         
 
 

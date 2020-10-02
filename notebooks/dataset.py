@@ -78,11 +78,10 @@ class Swebcg(Dataset):
     def get_dataframe(self):
         data = []
         for key, item in utils.parse_annotations(self.annotations).items():
-            if key in self.ids:
-                for cell in item:
-                    data.append({'vertices' : cell['vertices'],
-                                'class' : cell['class'],
-                                'image_id' : key})
+            for cell in item:
+                data.append({'vertices' : cell['vertices'],
+                            'class' : cell['class'],
+                            'image_id' : key})
         return pd.DataFrame(data)
 
 

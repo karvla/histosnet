@@ -121,11 +121,11 @@ class Quip(Dataset):
                     slide_id = _submitter_id(Path(root).stem.upper())
                     if slide_id in self.annotations:
                         self.annotations[slide_id].append(
-                            {"file_name": name, "region": self._region(name)}
+                            {"file_name": os.path.join(root, name), "region": self._region(name)}
                         )
                     else:
                         self.annotations[slide_id] = [
-                            {"file_name": name, "region": self._region(name)}
+                            {"file_name": os.path.join(root, name), "region": self._region(name)}
                         ]
         self.ids = []
         for key, item in self.annotations.items():

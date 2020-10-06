@@ -114,20 +114,8 @@ class Quip(Dataset):
         self.image_dir = self.path / "images"
         self.anno_dir = self.path / "annotations"
         self.slides = _get_quip_image_index(self.image_dir)
+        self.annotations = _get_quip_annotation_index(self.anno_dir)
 
-        print(f"Indexing annotations in {self.anno_dir}")
-        self.annotations = {}
-        for root, dirs, files in os.walk(self.anno_dir):
-            for name in files:
-                if name[-3:] == "csv":
-                    slide_id = _submitter_id(Path(root).stem.upper())
-                    region = self._region(name)
-                    path = os.path.join(root, name)
-                    if self._contains_cells(path):
-                        if slide_id in self.annotations:
-                            self.annotations[slide_id][region] = path
-                        else:
-                            self.annotations[slide_id] = {region : path}
         self.ids = []
 
         for key, item in self.annotations.items():
@@ -138,25 +126,12 @@ class Quip(Dataset):
     def _anno_ids(self):
         return [Path(f.upper()).stem[:-8] for f in os.listdir(self.anno_dir)]
 
-    def _contains_cells(self, annotation_path):
-        with open(annotation_path) as f:
-            return len(f.readlines()) > 2
-
     @property
     def _slide_ids(self):
         return [f for f in os.walk(self.image_dir)]
 
-    def _region(self, file_name):
-        x, y, width, height = re.findall(r"(\d*)_(\d*)_(\d*)_(\d*)", file_name)[0]
-        return int(x), int(y), int(width), int(height)
-
-    def load_image_patch(self, image_id, region):
-        return np.array(
-                OpenSlide(self.slides[image_id]).read_region(region[:2], 0, region[2:])
-                )[...,:3]
-
     def load_image(self, image_id):
-        return self.load_image_patch(*image_id)
+        return _load_cached_patch(self.slides[image_id[0]], image_id[1])
 
     def get_annotation(self, image_id):
         slide_id, region = image_id
@@ -179,9 +154,6 @@ class Quip(Dataset):
         return np.ones((width, height))
 
 
-def _submitter_id(file_name : str):
-    return  re.findall("[^.]*", file_name)[0]
-        
 @memory.cache
 def _get_quip_image_index(image_dir):
     print(f"Indexing images in {image_dir}")
@@ -191,6 +163,38 @@ def _get_quip_image_index(image_dir):
             if name[-3:] == "svs":
                 slides[_submitter_id(name)] = os.path.join(root, name)
     return slides
+
+@memory.cache
+def _get_quip_annotation_index(anno_dir):
+    print(f"Indexing annotations in {anno_dir}")
+    annotations = {}
+    for root, dirs, files in os.walk(anno_dir):
+        for name in files:
+            if name[-3:] == "csv":
+                slide_id = _submitter_id(Path(root).stem.upper())
+                region = _region(name)
+                path = os.path.join(root, name)
+                if _contains_cells(path):
+                    if slide_id in annotations:
+                        annotations[slide_id][region] = path
+                    else:
+                        annotations[slide_id] = {region : path}
+    return annotations
+
+def _submitter_id(file_name : str):
+    return  re.findall("[^.]*", file_name)[0]
+
+def _region(file_name):
+    x, y, width, height = re.findall(r"(\d*)_(\d*)_(\d*)_(\d*)", file_name)[0]
+    return int(x), int(y), int(width), int(height)
+
+def _contains_cells(annotation_path):
+    with open(annotation_path) as f:
+        return len(f.readlines()) > 2
+
+@memory.cache
+def _load_cached_patch(path, region):
+    return np.array(OpenSlide(path).read_region(region[:2], 0, region[2:]))[...,:3]
 
 
 if __name__ == "__main__":

@@ -11,16 +11,11 @@ from skimage.io import imread
 from dataset import Dataset
 from utils import get_mask, get_weight_map
 from typing import List
+import config
 
+c = config.Config()
 class AugmentedSequence(Sequence):
-    def __init__(
-        self,
-        datasets : List[Dataset],
-        batch_size,
-        aug: iaa.Sequential,
-        img_width,
-        img_height,
-    ):
+    def __init__(self, datasets : List[Dataset], aug: iaa.Sequential):
 
         self.data = []
         for dataset in datasets:
@@ -36,11 +31,11 @@ class AugmentedSequence(Sequence):
                     )
                 )
 
-        self.batch_size = batch_size
+        self.batch_size = c.BATCH_SIZE
         self.aug = aug
         self.data_size = len(dataset.ids)
-        self.img_width = img_width
-        self.img_height = img_height
+        self.img_width = c.WIDTH
+        self.img_height = c.HEIGHT
 
     def __len__(self):
         return self.data_size

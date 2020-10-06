@@ -15,6 +15,8 @@ from imantics import Polygons, Mask
 import pandas as pd
 from tqdm import tqdm
 from openslide import OpenSlide
+from itertools import tee
+
 
 memory = Memory("./cache", verbose=0)
 
@@ -119,22 +121,26 @@ class Quip(Dataset):
             for name in files:
                 if name[-3:] == "csv":
                     slide_id = _submitter_id(Path(root).stem.upper())
-                    if slide_id in self.annotations:
-                        self.annotations[slide_id].append(
-                            {"file_name": os.path.join(root, name), "region": self._region(name)}
-                        )
-                    else:
-                        self.annotations[slide_id] = [
-                            {"file_name": os.path.join(root, name), "region": self._region(name)}
-                        ]
+                    region = self._region(name)
+                    path = os.path.join(root, name)
+                    if self._contains_cells(path):
+                        if slide_id in self.annotations:
+                            self.annotations[slide_id][region] = path
+                        else:
+                            self.annotations[slide_id] = {region : path}
         self.ids = []
+
         for key, item in self.annotations.items():
             if key in self.slides:
-                self.ids.extend([f"{key}_{i['file_name']}" for i in item])
+                self.ids.extend([(key, i) for i in item.keys()])
 
     @property
     def _anno_ids(self):
         return [Path(f.upper()).stem[:-8] for f in os.listdir(self.anno_dir)]
+
+    def _contains_cells(self, annotation_path):
+        with open(annotation_path) as f:
+            return len(f.readlines()) > 2
 
     @property
     def _slide_ids(self):
@@ -146,15 +152,31 @@ class Quip(Dataset):
 
     def load_image_patch(self, image_id, region):
         return np.array(
-                OpenSlide(self.slides[image_id]).read_region(region[:2], 1, region[2:])
+                OpenSlide(self.slides[image_id]).read_region(region[:2], 0, region[2:])
                 )[...,:3]
 
     def load_image(self, image_id):
-        print(image_id)
-        region = self._region(image_id)
-        print(region)
-        slide_id = re.findall("[^\_]*", image_id)[0]
-        return self.load_image_patch(slide_id, region)
+        return self.load_image_patch(*image_id)
+
+    def get_annotation(self, image_id):
+        slide_id, region = image_id
+        anno = list(pd.read_csv(self.anno_dir / self.annotations[slide_id][region])["Polygon"])
+        x0, y0, width, height =  region
+        annotations = []
+        for polygon in anno:
+            polygon = polygon[1:-1].split(':')
+            annotations.append([(float(x)-x0, float(y)-y0) for x, y in zip(polygon[0::2], polygon[1::2])])
+        return annotations
+
+    def get_mask(self, image_id):
+        _, (_, _, width, height) = image_id
+        return np.array(utils.get_boundary_mask(
+                    utils.generate_mask(self.get_annotation(image_id), (width, height)))
+                , dtype=np.int8)
+
+    def get_weight_map(self, image_id):
+        _, (_, _, width, height) = image_id
+        return np.ones((width, height))
 
 
 def _submitter_id(file_name : str):

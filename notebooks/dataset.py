@@ -151,16 +151,19 @@ class Quip(Dataset):
 
     def get_weight_map(self, image_id):
         _, (_, _, width, height) = image_id
-        return np.ones((width, height))
+        return np.ones((width, height), dtype=np.float32)
 
 
 @memory.cache
 def _get_quip_image_index(image_dir):
     print(f"Indexing images in {image_dir}")
     slides = {}
+    cq = pd.read_csv(image_dir.parent / "wsi_quality_control_result.txt")
+    good_slides = cq[cq["SegmentationUnacceptableOrNot"] == '0']["WSI-ID"].unique()
+
     for root, _, files in tqdm(os.walk(image_dir)):
         for name in files:
-            if name[-3:] == "svs":
+            if name[-3:] == "svs" and name in good_slides:
                 slides[_submitter_id(name)] = os.path.join(root, name)
     return slides
 
@@ -190,7 +193,7 @@ def _region(file_name):
 
 def _contains_cells(annotation_path):
     with open(annotation_path) as f:
-        return len(f.readlines()) > 2
+        return len(f.readlines()) > 1000
 
 @memory.cache
 def _load_cached_patch(path, region):

@@ -85,25 +85,27 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
         Training weights. A 2D array of shape (image_height, image_width).
     """
     mask = erode_mask(mask)
-    w = np.zeros_like(mask, dtype=np.float64)
+    w = np.zeros_like(mask, dtype=np.float32)
     win_shape = (mask.shape[0], win_size)
     for j in range(0, mask.shape[1], win_size):
         labels = label(mask[:, j : j + win_size])
         no_labels = labels == 0
         label_ids = sorted(np.unique(labels))[1:]
+        if len(label_ids) > 1:
 
-        distances = np.zeros((win_shape + (len(label_ids),)))
+            distances = np.zeros((win_shape + (len(label_ids),)))
 
-        for i, label_id in enumerate(label_ids):
-            distances[:, :, i] = distance_transform_edt(labels != label_id)
+            for i, label_id in enumerate(label_ids):
+                distances[:, :, i] = distance_transform_edt(labels != label_id)
 
-        label_ids = None
-        distances = np.sort(distances, axis=2)
-        w[:, j : j + win_size] = (
-            w0
-            * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
-            * no_labels
-        )
+            label_ids = None
+            distances = np.sort(distances, axis=2)
+            w[:, j : j + win_size] = (
+                w0
+                * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
+                * no_labels
+            )
+        
     return w + mask
 
 

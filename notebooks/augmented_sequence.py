@@ -7,29 +7,26 @@ from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from imgaug.augmentables.heatmaps import HeatmapsOnImage
 
 from pathlib import Path
-from skimage.io import imread
 from dataset import Dataset
-from utils import get_mask, get_weight_map
 from typing import List
 import config
 
 c = config.Config()
 class AugmentedSequence(Sequence):
-    def __init__(self, datasets : List[Dataset], aug: iaa.Sequential):
+    def __init__(self, dataset : Dataset, aug: iaa.Sequential):
 
         self.data = []
-        for dataset in datasets:
-            for pid in dataset.ids:
-                im = dataset.load_image(pid)
-                self.data.append(
-                    (
-                        im,
-                        SegmentationMapsOnImage(dataset.get_mask(pid), im.shape),
-                        HeatmapsOnImage(
-                            dataset.get_weight_map(pid).astype(np.float32), im.shape, max_value=10
-                        ),
-                    )
+        for pid in dataset.ids:
+            im = dataset.load_image(pid)
+            self.data.append(
+                (
+                    im,
+                    SegmentationMapsOnImage(dataset.get_mask(pid), im.shape),
+                    HeatmapsOnImage(
+                        dataset.get_weight_map(pid).astype(np.float32), im.shape, max_value=10
+                    ),
                 )
+            )
 
         self.batch_size = c.BATCH_SIZE
         self.aug = aug

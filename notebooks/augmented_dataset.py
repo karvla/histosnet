@@ -48,7 +48,8 @@ class AugmentedDataset(tf.data.Dataset):
                         ]
                     )
 
-                    augwmaps = [_fix_wmap_dim(utils.unet_weight_map(m.get_arr() > 0, c.WIDTH)) for m in augmasks]
+                    augwmaps = [_fix_wmap_dim(
+                        utils.unet_weight_map(m.get_arr() > 0, c.WIDTH)) for m in augmasks]
                     augmasks = [to_categorical(m.get_arr(), num_classes = 3) for m in augmasks]
 
                     augims = np.asarray(augims)

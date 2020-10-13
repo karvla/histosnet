@@ -26,7 +26,8 @@ class Dataset:
         self.path = path
         self.image_dir = path / "images"
         self.ids = np.array([Path(f).stem for f in os.listdir(self.image_dir)])
-        self.image_shape = self.load_image(self.ids[0]).shape
+        self.ending = Path(os.listdir(self.image_dir)[0]).suffix
+        #self.image_shape = self.load_image(self.ids[0]).shape
 
     @property
     def size(self):
@@ -36,10 +37,10 @@ class Dataset:
         return self.load_image(self.ids[idx])
 
     def file_name(self, image_id):
-        return str(self.image_dir / f"{image_id}.png")
+        return str(self.image_dir / f"{image_id}{self.ending}")
 
     def load_image(self, image_id):
-        return imread(self.image_dir / f"{image_id}.png")
+        return imread(self.image_dir / f"{image_id}{self.ending}")
 
     def make_split(self, factor=0.8):
         np.random.seed(0)
@@ -67,7 +68,7 @@ class Monuseg(Dataset):
         return utils.get_weight_map(patient_id)
 
 
-class Swebcg(Dataset):
+class TNBC(Dataset):
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/swebcg/")
 
@@ -85,6 +86,14 @@ class Swebcg(Dataset):
                             'class' : cell['class'],
                             'image_id' : key})
         return pd.DataFrame(data)
+
+
+class TNBCWSI(Dataset):
+    def __init__(self):
+        super().__init__(Path(__file__).parent.parent / "data/tnbc/")
+
+    def load_image(self, image_id):
+        return OpenSlide(self.file_name(image_id))
 
 
 class Bns(Dataset):

@@ -4,7 +4,7 @@ from pathlib import Path
 @dataclass
 class Config:
     WIDTH = 256
-    HEIGHT = 256
+    HEIGHT = WIDTH
     CHANNELS = 3
     SHAPE = (WIDTH, HEIGHT, CHANNELS)
 

@@ -68,9 +68,10 @@ class Monuseg(Dataset):
         return utils.get_weight_map(patient_id)
 
 
-class TNBC(Dataset):
+class TNBC1(Dataset):
+    """ 80 images with some annotated cells """
     def __init__(self):
-        super().__init__(Path(__file__).parent.parent / "data/swebcg/")
+        super().__init__(Path(__file__).parent.parent / "data/tnbc1/")
 
         with open(self.path / "annotations.json") as f:
             self.annotations = json.load(f)
@@ -86,6 +87,11 @@ class TNBC(Dataset):
                             'class' : cell['class'],
                             'image_id' : key})
         return pd.DataFrame(data)
+
+class TNBC2(Dataset):
+    """ 530 images without annotations """
+    def __init__(self):
+        super().__init__(Path(__file__).parent.parent / "data/tnbc2/")
 
 
 class TNBCWSI(Dataset):

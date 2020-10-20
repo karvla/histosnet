@@ -16,6 +16,8 @@ import pandas as pd
 from tqdm import tqdm
 from openslide import OpenSlide
 from itertools import tee
+from skimage.transform import rescale
+from indexing import get_quip_image_index, get_quip_annotation_index
 
 
 memory = Memory("./cache", verbose=0)
@@ -27,7 +29,7 @@ class Dataset:
         self.image_dir = path / "images"
         self.ids = np.array([Path(f).stem for f in os.listdir(self.image_dir)])
         self.ending = Path(os.listdir(self.image_dir)[0]).suffix
-        #self.image_shape = self.load_image(self.ids[0]).shape
+        # self.image_shape = self.load_image(self.ids[0]).shape
 
     @property
     def size(self):
@@ -39,7 +41,7 @@ class Dataset:
     def file_name(self, image_id):
         return str(self.image_dir / f"{image_id}{self.ending}")
 
-    def load_image(self, image_id):
+    def load_image(self, image_id, scale=1.0):
         return imread(self.image_dir / f"{image_id}{self.ending}")
 
     def make_split(self, factor=0.8):
@@ -62,7 +64,9 @@ class Monuseg(Dataset):
         return utils.get_annotation_monuseg(patient_id)
 
     def get_mask(self, patient_id: str):
-        return np.array(utils.get_boundary_mask(utils.get_mask(patient_id)), dtype=np.int8)
+        return np.array(
+            utils.get_boundary_mask(utils.get_mask(patient_id)), dtype=np.int8
+        )
 
     def get_weight_map(self, patient_id: str):
         return utils.get_weight_map(patient_id)
@@ -70,6 +74,7 @@ class Monuseg(Dataset):
 
 class TNBC1(Dataset):
     """ 80 images with some annotated cells """
+
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/tnbc1/")
 
@@ -83,13 +88,19 @@ class TNBC1(Dataset):
         data = []
         for key, item in utils.parse_annotations(self.annotations).items():
             for cell in item:
-                data.append({'vertices' : cell['vertices'],
-                            'class' : cell['class'],
-                            'image_id' : key})
+                data.append(
+                    {
+                        "vertices": cell["vertices"],
+                        "class": cell["class"],
+                        "image_id": key,
+                    }
+                )
         return pd.DataFrame(data)
+
 
 class TNBC2(Dataset):
     """ 530 images without annotations """
+
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/tnbc2/")
 
@@ -124,18 +135,24 @@ class Bns(Dataset):
 
 
 class Quip(Dataset):
-    def __init__(self):
+    def __init__(self, n_cells_threshold=2000):
         self.path = Path(__file__).parent.parent / "data/quip"
         self.image_dir = self.path / "images"
         self.anno_dir = self.path / "annotations"
-        self.slides = _get_quip_image_index(self.image_dir)
-        self.annotations = _get_quip_annotation_index(self.anno_dir)
+        self.slides = get_quip_image_index(self.image_dir)
+        self.annotations = get_quip_annotation_index(self.anno_dir)
 
         self.ids = []
 
         for key, item in self.annotations.items():
             if key in self.slides:
-                self.ids.extend([(key, i) for i in item.keys()])
+                self.ids.extend(
+                    [
+                        (key, region)
+                        for region, value in item.items()
+                        if item["n_cells"] > n_cells_threshold
+                    ]
+                )
 
     @property
     def _anno_ids(self):
@@ -145,74 +162,51 @@ class Quip(Dataset):
     def _slide_ids(self):
         return [f for f in os.walk(self.image_dir)]
 
-    def load_image(self, image_id):
-        return _load_cached_patch(self.slides[image_id[0]], image_id[1])
+    def load_image(self, image_id, scale=1.0):
+        slide_id, region = image_id
+        img = np.array(
+            OpenSlide(self.slides[slide_id]).read_region(region[:2], 0, region[2:])
+        )[..., :3]
+
+        if scale > 1.0:
+            img = rescale(img, scale, multichannel=True, preserve_range=True)
+        if scale < 1.0:
+            img = rescale(
+                img, scale, multichannel=True, anti_aliasing=True, preserve_range=True
+            )
+
+        return img
 
     def get_annotation(self, image_id):
         slide_id, region = image_id
-        anno = list(pd.read_csv(self.anno_dir / self.annotations[slide_id][region])["Polygon"])
-        x0, y0, width, height =  region
+        path = self.anno_dir / self.annotations[slide_id][region]["path"]
+        anno = list(pd.read_csv(path)["Polygon"])
+        x0, y0, width, height = region
         annotations = []
         for polygon in anno:
-            polygon = polygon[1:-1].split(':')
-            annotations.append([(float(x)-x0, float(y)-y0) for x, y in zip(polygon[0::2], polygon[1::2])])
+            polygon = polygon[1:-1].split(":")
+            annotations.append(
+                [
+                    (float(x) - x0, float(y) - y0)
+                    for x, y in zip(polygon[0::2], polygon[1::2])
+                ]
+            )
         return annotations
 
-    def get_mask(self, image_id):
+    def get_mask(self, image_id, scale=1.0):
         _, (_, _, width, height) = image_id
-        return np.array(utils.get_boundary_mask(
-                    utils.generate_mask(self.get_annotation(image_id), (width, height)))
-                , dtype=np.int8)
+        mask = utils.generate_mask(self.get_annotation(image_id), (width, height))
+
+        if scale > 1.0:
+            mask = rescale(mask, scale, preserve_range=True)
+        if scale < 1.0:
+            mask = rescale(mask, scale, anti_aliasing=True, preserve_range=True)
+
+        return utils.get_boundary_mask(mask).astype(np.int8)
 
     def get_weight_map(self, image_id):
         _, (_, _, width, height) = image_id
         return np.ones((width, height), dtype=np.float32)
-
-
-@memory.cache
-def _get_quip_image_index(image_dir):
-    print(f"Indexing images in {image_dir}")
-    slides = {}
-    cq = pd.read_csv(image_dir.parent / "wsi_quality_control_result.txt")
-    good_slides = cq[cq["SegmentationUnacceptableOrNot"] == '0']["WSI-ID"].unique()
-
-    for root, _, files in tqdm(os.walk(image_dir)):
-        for name in files:
-            if name[-3:] == "svs" and name in good_slides:
-                slides[_submitter_id(name)] = os.path.join(root, name)
-    return slides
-
-@memory.cache
-def _get_quip_annotation_index(anno_dir):
-    print(f"Indexing annotations in {anno_dir}")
-    annotations = {}
-    for root, dirs, files in os.walk(anno_dir):
-        for name in files:
-            if name[-3:] == "csv":
-                slide_id = _submitter_id(Path(root).stem.upper())
-                region = _region(name)
-                path = os.path.join(root, name)
-                if _contains_cells(path):
-                    if slide_id in annotations:
-                        annotations[slide_id][region] = path
-                    else:
-                        annotations[slide_id] = {region : path}
-    return annotations
-
-def _submitter_id(file_name : str):
-    return  re.findall("[^.]*", file_name)[0]
-
-def _region(file_name):
-    x, y, width, height = re.findall(r"(\d*)_(\d*)_(\d*)_(\d*)", file_name)[0]
-    return int(x), int(y), int(width), int(height)
-
-def _contains_cells(annotation_path):
-    with open(annotation_path) as f:
-        return len(f.readlines()) > 1000
-
-@memory.cache
-def _load_cached_patch(path, region):
-    return np.array(OpenSlide(path).read_region(region[:2], 0, region[2:]))[...,:3]
 
 
 if __name__ == "__main__":

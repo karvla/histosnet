@@ -12,8 +12,10 @@ from typing import List
 import config
 
 c = config.Config()
+
+
 class AugmentedSequence(Sequence):
-    def __init__(self, dataset : Dataset, aug: iaa.Sequential):
+    def __init__(self, dataset: Dataset, aug: iaa.Sequential):
 
         self.data = []
         for pid in dataset.ids:
@@ -23,7 +25,9 @@ class AugmentedSequence(Sequence):
                     im,
                     SegmentationMapsOnImage(dataset.get_mask(pid), im.shape),
                     HeatmapsOnImage(
-                        dataset.get_weight_map(pid).astype(np.float32), im.shape, max_value=10
+                        dataset.get_weight_map(pid).astype(np.float32),
+                        im.shape,
+                        max_value=10,
                     ),
                 )
             )
@@ -53,7 +57,7 @@ class AugmentedSequence(Sequence):
             ]
         )
 
-        augmasks = [to_categorical(m.get_arr(), num_classes = 3) for m in augmasks]
+        augmasks = [to_categorical(m.get_arr(), num_classes=3) for m in augmasks]
         augwmaps = [self._fix_wmap_dim(m.get_arr()) for m in augwmaps]
 
         augims = np.asarray(augims)

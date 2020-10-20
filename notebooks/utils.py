@@ -3,7 +3,7 @@ import random
 from skimage.draw import polygon
 from PIL import Image, ImageDraw
 from skimage.io import imread, imshow
-from skimage.transform import resize
+from skimage.transform import rescale
 from skimage.measure import label
 from skimage.morphology import binary_erosion, square
 from scipy.ndimage.morphology import distance_transform_edt
@@ -17,6 +17,7 @@ from keras.utils.np_utils import to_categorical
 import json
 import dataset
 from config import Config
+
 c = Config()
 
 memory = Memory("./cache", verbose=0)
@@ -102,10 +103,12 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
             distances = np.sort(distances, axis=2)
             w[:, j : j + win_size] = (
                 w0
-                * np.exp(-1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2)
+                * np.exp(
+                    -1 / 2 * ((distances[:, :, 0] + distances[:, :, 1]) / sigma) ** 2
+                )
                 * no_labels
             )
-        
+
     return w + mask
 
 

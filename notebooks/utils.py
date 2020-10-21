@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw
 from skimage.io import imread, imshow
 from skimage.transform import rescale
 from skimage.measure import label
-from skimage.morphology import binary_erosion, square
+from skimage.morphology import binary_erosion, diamond, remove_small_objects
 from scipy.ndimage.morphology import distance_transform_edt
 from pathlib import Path
 from tqdm import tqdm
@@ -50,11 +50,12 @@ def get_weight_map_bns(image_id):
 
 
 def erode_mask(mask):
-    return binary_erosion(mask, square(5))
+    return binary_erosion(mask, diamond(2))
 
 
 def get_boundary_mask(mask):
     """ Returns mask where 0 is background, 1 in inside and 2 is boundary """
+    mask = remove_small_objects(mask.astype(np.bool), 15)
     return 2 * mask - erode_mask(mask)
 
 

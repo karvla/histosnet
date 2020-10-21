@@ -29,7 +29,6 @@ class Dataset:
         self.image_dir = path / "images"
         self.ids = np.array([Path(f).stem for f in os.listdir(self.image_dir)])
         self.ending = Path(os.listdir(self.image_dir)[0]).suffix
-        # self.image_shape = self.load_image(self.ids[0]).shape
 
     @property
     def size(self):
@@ -42,7 +41,22 @@ class Dataset:
         return str(self.image_dir / f"{image_id}{self.ending}")
 
     def load_image(self, image_id, scale=1.0):
-        return imread(self.image_dir / f"{image_id}{self.ending}")
+        return self._rescale(imread(self.image_dir / f"{image_id}{self.ending}"), scale)
+
+    def _rescale(self, img, scale):
+        multichannel = len(img.shape) > 2
+        if scale > 1.0:
+            return rescale(img, scale, multichannel=multichannel, preserve_range=True)
+        elif scale < 1.0:
+            return rescale(
+                img,
+                scale,
+                multichannel=multichannel,
+                anti_aliasing=True,
+                preserve_range=True,
+            )
+        else:
+            return img
 
     def make_split(self, factor=0.8):
         np.random.seed(0)
@@ -63,13 +77,12 @@ class Monuseg(Dataset):
     def get_annotation(self, patient_id: str):
         return utils.get_annotation_monuseg(patient_id)
 
-    def get_mask(self, patient_id: str):
-        return np.array(
-            utils.get_boundary_mask(utils.get_mask(patient_id)), dtype=np.int8
-        )
+    def get_mask(self, patient_id: str, scale):
+        mask = self._rescale(utils.get_mask(patient_id), scale)
+        return utils.get_boundary_mask(mask).astype(np.int8)
 
-    def get_weight_map(self, patient_id: str):
-        return utils.get_weight_map(patient_id)
+    def get_weight_map(self, patient_id: str, scale=1.0):
+        return self._rescale(utils.get_weight_map(patient_id), scale)
 
 
 class TNBC1(Dataset):
@@ -117,16 +130,17 @@ class Bns(Dataset):
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/bns/")
 
-    def load_image(self, image_id):
-        return imread(self.image_dir / f"{image_id}.png")[..., 0:3]  # skipping alpha
+    def load_image(self, image_id, scale=1.0):
+        img = imread(self.image_dir / f"{image_id}.png")[..., 0:3]  # skipping alpha
+        return self._rescale(img, scale)
 
-    def get_mask(self, image_id):
+    def get_mask(self, image_id, scale):
         mask = nib.load(self.path / f"masks/{image_id}.nii.gz").get_fdata() > 0
         mask = np.transpose(mask, axes=(1, 0, 2))[..., 0]
-        return mask.astype(np.int8)
+        return utils.get_boundary_mask(self._rescale(mask, scale))
 
-    def get_weight_map(self, image_id):
-        return utils.get_weight_map_bns(image_id)
+    def get_weight_map(self, image_id, scale=1.0):
+        return self._rescale(utils.get_weight_map_bns(image_id), scale)
 
     def get_annotation(self, image_id):
         anno = nib.load(self.path / f"masks/{image_id}.nii.gz").get_fdata()
@@ -150,7 +164,7 @@ class Quip(Dataset):
                     [
                         (key, region)
                         for region, value in item.items()
-                        if item["n_cells"] > n_cells_threshold
+                        if value["n_cells"] > n_cells_threshold
                     ]
                 )
 
@@ -168,14 +182,7 @@ class Quip(Dataset):
             OpenSlide(self.slides[slide_id]).read_region(region[:2], 0, region[2:])
         )[..., :3]
 
-        if scale > 1.0:
-            img = rescale(img, scale, multichannel=True, preserve_range=True)
-        if scale < 1.0:
-            img = rescale(
-                img, scale, multichannel=True, anti_aliasing=True, preserve_range=True
-            )
-
-        return img
+        return self._rescale(img, scale)
 
     def get_annotation(self, image_id):
         slide_id, region = image_id
@@ -196,12 +203,7 @@ class Quip(Dataset):
     def get_mask(self, image_id, scale=1.0):
         _, (_, _, width, height) = image_id
         mask = utils.generate_mask(self.get_annotation(image_id), (width, height))
-
-        if scale > 1.0:
-            mask = rescale(mask, scale, preserve_range=True)
-        if scale < 1.0:
-            mask = rescale(mask, scale, anti_aliasing=True, preserve_range=True)
-
+        mask = self._rescale(mask, scale)
         return utils.get_boundary_mask(mask).astype(np.int8)
 
     def get_weight_map(self, image_id):

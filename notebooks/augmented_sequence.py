@@ -15,17 +15,17 @@ c = config.Config()
 
 
 class AugmentedSequence(Sequence):
-    def __init__(self, dataset: Dataset, aug: iaa.Sequential):
+    def __init__(self, dataset: Dataset, aug: iaa.Sequential, scale=1.0):
 
         self.data = []
         for pid in dataset.ids:
-            im = dataset.load_image(pid)
+            im = dataset.load_image(pid, scale)
             self.data.append(
                 (
                     im,
-                    SegmentationMapsOnImage(dataset.get_mask(pid), im.shape),
+                    SegmentationMapsOnImage(dataset.get_mask(pid, scale), im.shape),
                     HeatmapsOnImage(
-                        dataset.get_weight_map(pid).astype(np.float32),
+                        dataset.get_weight_map(pid, scale).astype(np.float32),
                         im.shape,
                         max_value=10,
                     ),

@@ -17,29 +17,29 @@ c = config.Config
 class AugmentedDataset(tf.data.Dataset):
     def __new__(self, dataset, aug, num_samples=3, scale=1.0):
         return tf.data.Dataset.from_generator(
-            lambda: self._generator(self, dataset, aug, num_samples, scale),
+            lambda: self.generator(self, dataset, aug, num_samples, scale),
             output_types=((tf.dtypes.uint8, tf.dtypes.float32), tf.dtypes.uint8),
         )
 
-    def _generator(self, dataset, aug, num_samples, scale):
+    def generator(self, dataset, aug, num_samples, scale):
         def _fix_wmap_dim(wmap):
             wmap = wmap.ravel()
             wmap = np.array((np.ones(wmap.shape), wmap, wmap)).T
             wmap = wmap.reshape((c.HEIGHT, c.HEIGHT, 3))
             return wmap
 
-        for imid in random.choices(dataset.ids, k=num_samples):
+        imid = random.choice(dataset.ids)
+        image = dataset.load_image(imid, scale)
+        mask = dataset.get_mask(imid, scale)
 
-            image = dataset.load_image(imid, scale)
-            mask = dataset.get_mask(imid, scale)
+        s = 4
+        split_h = lambda img: np.array_split(img, s, axis=1)
+        split_v = lambda img: np.array_split(img, s, axis=0)
+        for imrow, maskrow in zip(split_h(image), split_h(mask)):
+            for im, mas in zip(split_v(imrow), split_v(maskrow)):
+                mas = SegmentationMapsOnImage(mas, im.shape)
 
-            s = 4
-            split_h = lambda img: np.array_split(img, s, axis=1)
-            split_v = lambda img: np.array_split(img, s, axis=0)
-            for imrow, maskrow in zip(split_h(image), split_h(mask)):
-                for im, mas in zip(split_v(imrow), split_v(maskrow)):
-                    mas = SegmentationMapsOnImage(mas, im.shape)
-
+                for i in range(num_samples):
                     aug_pairs = [
                         aug(image=im, segmentation_maps=mas) for i in range(100)
                     ]

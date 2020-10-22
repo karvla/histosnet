@@ -17,6 +17,7 @@ from tqdm import tqdm
 from openslide import OpenSlide
 from itertools import tee
 from skimage.transform import rescale
+from skimage.morphology import remove_small_objects
 from indexing import get_quip_image_index, get_quip_annotation_index
 
 
@@ -45,18 +46,20 @@ class Dataset:
 
     def _rescale(self, img, scale):
         multichannel = len(img.shape) > 2
+        og_type = img.dtype
         if scale > 1.0:
-            return rescale(img, scale, multichannel=multichannel, preserve_range=True)
+            img = rescale(img, scale, multichannel=multichannel, preserve_range=True)
         elif scale < 1.0:
-            return rescale(
+            if not multichannel and img.dtype != np.float32:
+                img = remove_small_objects(img.astype(np.bool), 10)
+            img = rescale(
                 img,
                 scale,
                 multichannel=multichannel,
                 anti_aliasing=True,
                 preserve_range=True,
             )
-        else:
-            return img
+        return img.astype(og_type)
 
     def make_split(self, factor=0.8):
         np.random.seed(0)
@@ -77,7 +80,7 @@ class Monuseg(Dataset):
     def get_annotation(self, patient_id: str):
         return utils.get_annotation_monuseg(patient_id)
 
-    def get_mask(self, patient_id: str, scale):
+    def get_mask(self, patient_id: str, scale=1.0):
         mask = self._rescale(utils.get_mask(patient_id), scale)
         return utils.get_boundary_mask(mask).astype(np.int8)
 
@@ -134,10 +137,10 @@ class Bns(Dataset):
         img = imread(self.image_dir / f"{image_id}.png")[..., 0:3]  # skipping alpha
         return self._rescale(img, scale)
 
-    def get_mask(self, image_id, scale):
+    def get_mask(self, image_id, scale=1.0):
         mask = nib.load(self.path / f"masks/{image_id}.nii.gz").get_fdata() > 0
         mask = np.transpose(mask, axes=(1, 0, 2))[..., 0]
-        return utils.get_boundary_mask(self._rescale(mask, scale))
+        return utils.get_boundary_mask(self._rescale(mask.astype(np.uint8), scale))
 
     def get_weight_map(self, image_id, scale=1.0):
         return self._rescale(utils.get_weight_map_bns(image_id), scale)

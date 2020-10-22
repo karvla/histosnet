@@ -46,7 +46,8 @@ def get_weight_map(patient_id):
 
 @memory.cache
 def get_weight_map_bns(image_id):
-    return unet_weight_map(dataset.Bns().get_annotation(image_id))
+    mask = dataset.Bns().get_mask(image_id) > 0
+    return unet_weight_map(mask, mask.shape[0])
 
 
 def erode_mask(mask):
@@ -55,7 +56,6 @@ def erode_mask(mask):
 
 def get_boundary_mask(mask):
     """ Returns mask where 0 is background, 1 in inside and 2 is boundary """
-    mask = remove_small_objects(mask.astype(np.bool), 15)
     return 2 * mask - erode_mask(mask)
 
 

@@ -9,7 +9,9 @@ from imgaug.augmentables.heatmaps import HeatmapsOnImage
 from pathlib import Path
 from dataset import Dataset
 from typing import List
+
 import config
+from utils import fix_wmap_shape
 
 c = config.Config()
 
@@ -41,12 +43,6 @@ class AugmentedSequence(Sequence):
     def __len__(self):
         return self.data_size
 
-    def _fix_wmap_dim(self, wmap):
-        wmap = wmap.ravel()
-        wmap = np.array((np.ones(wmap.shape), wmap, wmap)).T
-        wmap = wmap.reshape((self.img_height, self.img_width, 3))
-        return wmap
-
     def __getitem__(self, idx):
         im, mask, wmap = self.data[idx % self.data_size]
 
@@ -58,7 +54,9 @@ class AugmentedSequence(Sequence):
         )
 
         augmasks = [to_categorical(m.get_arr(), num_classes=3) for m in augmasks]
-        augwmaps = [self._fix_wmap_dim(m.get_arr()) for m in augwmaps]
+        augwmaps = [
+            fix_wmap_shape(m.get_arr(), (c.HEIGHT, c.WIDTH, 3)) for m in augwmaps
+        ]
 
         augims = np.asarray(augims)
         augmasks = np.asarray(augmasks, dtype=np.float32)

@@ -10,6 +10,7 @@ from dataset import Dataset
 from time import time
 import tensorflow as tf
 import random
+from utils import fix_wmap_shape
 
 c = config.Config
 
@@ -22,11 +23,6 @@ class AugmentedDataset(tf.data.Dataset):
         )
 
     def generator(self, dataset, aug, num_samples, scale):
-        def _fix_wmap_dim(wmap):
-            wmap = wmap.ravel()
-            wmap = np.array((np.ones(wmap.shape), wmap, wmap)).T
-            wmap = wmap.reshape((c.HEIGHT, c.HEIGHT, 3))
-            return wmap
 
         imid = random.choice(dataset.ids)
         image = dataset.load_image(imid, scale)
@@ -50,7 +46,10 @@ class AugmentedDataset(tf.data.Dataset):
                     augims, augmasks = zip(*aug_pairs)
 
                     augwmaps = [
-                        _fix_wmap_dim(utils.unet_weight_map(m.get_arr() > 0, c.WIDTH))
+                        fix_wmap_shape(
+                            utils.unet_weight_map(m.get_arr() > 0, c.WIDTH),
+                            (c.WIDTH, c.HEIGHT, 3),
+                        )
                         for m in augmasks
                     ]
                     augmasks = [

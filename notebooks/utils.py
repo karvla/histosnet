@@ -44,7 +44,6 @@ def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
 
 
-@memory.cache
 def get_weight_map_bns(image_id):
     mask = dataset.Bns().get_mask(image_id) > 0
     return unet_weight_map(mask, mask.shape[0])
@@ -86,7 +85,7 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
     Numpy array
         Training weights. A 2D array of shape (image_height, image_width).
     """
-    mask = erode_mask(mask)
+    mask = erode_mask(mask)  # only use inside-values
     w = np.zeros_like(mask, dtype=np.float32)
     win_shape = (mask.shape[0], win_size)
     for j in range(0, mask.shape[1], win_size):
@@ -188,3 +187,13 @@ def draw_annotations(image, annotation, copy=False):
 def bounding_box(vertices):
     x, y = zip(*vertices)
     return (min(x), min(y)), (max(x), max(y))
+
+
+def fix_wmap_shape(wmap, target_shape):
+    wmap = wmap.ravel()
+
+    #  weight map should only be applied to inside-values
+    ones = np.ones(wmap.shape)
+    wmap = np.array((ones, wmap, ones)).T
+    wmap = wmap.reshape(target_shape)
+    return wmap

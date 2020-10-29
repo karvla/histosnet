@@ -4,6 +4,7 @@ from skimage.transform import rescale
 import imgaug.augmenters as iaa
 from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from imgaug.augmentables.heatmaps import HeatmapsOnImage
+from skimage.morphology import remove_small_objects
 import config
 import utils
 from dataset import Dataset
@@ -26,7 +27,9 @@ class AugmentedDataset(tf.data.Dataset):
 
         imid = random.choice(dataset.ids)
         image = dataset.load_image(imid, scale)
+
         mask = dataset.get_mask(imid, scale)
+        mask = remove_small_objects(mask, 5)
 
         s = 4
         split_h = lambda img: np.array_split(img, s, axis=1)

@@ -44,6 +44,7 @@ def get_weight_map(patient_id):
     return unet_weight_map(get_mask(patient_id))
 
 
+@memory.cache
 def get_weight_map_bns(image_id):
     mask = dataset.Bns().get_mask(image_id) > 0
     return unet_weight_map(mask, mask.shape[0])

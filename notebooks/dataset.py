@@ -30,6 +30,7 @@ class Dataset:
         self.image_dir = path / "images"
         self.ids = np.array([Path(f).stem for f in os.listdir(self.image_dir)])
         self.ending = Path(os.listdir(self.image_dir)[0]).suffix
+        self.name = path.stem
 
     @property
     def size(self):
@@ -123,7 +124,7 @@ class TNBC2(Dataset):
 
 class TNBCWSI(Dataset):
     def __init__(self):
-        super().__init__(Path(__file__).parent.parent / "data/tnbc/")
+        super().__init__(Path(__file__).parent.parent / "data/tnbc_wsi/")
 
     def load_image(self, image_id):
         return OpenSlide(self.file_name(image_id))

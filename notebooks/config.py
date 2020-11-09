@@ -11,7 +11,7 @@ class Config:
 
     BATCH_SIZE = 9
     BATCH_SHAPE = (BATCH_SIZE, WIDTH, HEIGHT, CHANNELS)
-    EPOCHS = 1000
+    EPOCHS = 2000
 
     ROOT_DIR = Path(__file__).parent.parent
     MODEL_DIR = ROOT_DIR / "models"

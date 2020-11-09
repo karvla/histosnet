@@ -12,6 +12,7 @@ import nibabel as nib
 import numpy as np
 import regex as re
 from imantics import Polygons, Mask
+from PIL import Image, ImageDraw, ImageStat
 import pandas as pd
 from tqdm import tqdm
 from openslide import OpenSlide
@@ -19,6 +20,7 @@ from itertools import tee
 from skimage.transform import rescale
 from skimage.morphology import remove_small_objects
 from indexing import get_quip_image_index, get_quip_annotation_index
+import random
 
 
 memory = Memory("./cache", verbose=0)
@@ -98,6 +100,17 @@ class TNBC1(Dataset):
         with open(self.path / "annotations.json") as f:
             self.annotations = json.load(f)
 
+    def _bbox_to_slice(self, bbox):
+        return (slice(int(bbox[0][1]), int(bbox[1][1]), None), 
+                slice(int(bbox[0][0]), int(bbox[1][0]), None))
+
+    def _generate_mask(self, vertices):
+        img = Image.new("L", (3000, 3000), 0)
+        ImageDraw.Draw(img).polygon(vertices, outline=1, fill=1)
+        (left, upper), (right, lower) = utils.bounding_box(vertices)
+        img = img.crop((left, upper, right+1, lower+1))
+        return np.asarray(img)
+
     def get_annotation(self, patient_id: str):
         return [cell["vertices"] for cell in self.annotations[patient_id]]
 
@@ -107,9 +120,10 @@ class TNBC1(Dataset):
             for cell in item:
                 data.append(
                     {
-                        "vertices": cell["vertices"],
                         "class": cell["class"],
                         "image_id": key,
+                        "obj" : self._bbox_to_slice(utils.bounding_box(cell["vertices"])),
+                        "mask" : self._generate_mask(cell["vertices"])
                     }
                 )
         return pd.DataFrame(data)
@@ -126,8 +140,26 @@ class TNBCWSI(Dataset):
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/tnbc_wsi/")
 
+    def _tissue_positions(self, slide : OpenSlide):
+        thumbnail = slide.get_thumbnail((100,100))
+        tissue = np.mean(thumbnail, axis=-1)/255 < 0.9
+        tissue = remove_small_objects(tissue, 200)
+        scale_factor = slide.dimensions[0] / thumbnail.size[0]
+        coords = np.where(tissue)
+        coords = [(c * scale_factor).astype(np.int) for c in coords]
+        coords = list(zip(*coords))
+        return coords
+
     def load_image(self, image_id):
         return OpenSlide(self.file_name(image_id))
+
+    def patches(self, image_id, n = 10, width = 1000) :
+        oslide = self.load_image(image_id)
+        coords = self._tissue_positions(oslide)
+        for y, x in random.choices(coords, k=n):
+            y, x = y - int(width/2), x - int(width/2)
+            yield np.array(oslide.read_region((x,y), 0, (width, width)))[..., :3]
+
 
 
 class Bns(Dataset):

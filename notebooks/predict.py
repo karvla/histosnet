@@ -1,4 +1,4 @@
-from skimage.transform import resize
+from skimage.transform import rescale
 from skimage import morphology
 from skimage import measure
 from scipy.ndimage import find_objects
@@ -7,8 +7,8 @@ from pathlib import Path
 from time import time
 import tensorflow as tf
 
-gpu = tf.config.experimental.list_physical_devices("GPU")[0]
-tf.config.experimental.set_memory_growth(gpu, True)
+# gpu = tf.config.experimental.list_physical_devices("GPU")[0]
+# tf.config.experimental.set_memory_growth(gpu, True)
 
 from skimage.io import imread, imsave
 import click
@@ -29,6 +29,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from weighted_loss_unet import make_weighted_loss_unet, my_loss
 import config
 import pickle
+import gc
 
 c = config.Config()
 memory = Memory("./cache", verbose=False)
@@ -87,21 +88,31 @@ def _reshape_to_patch(batch):
     return patch
 
 
-def post_processing(prediction, p=0.08):
-    prediction = prediction > p
+def post_processing(prediction, cutoff=0.1, size_limit=10):
+    prediction = prediction > cutoff
     prediction = morphology.dilation(prediction, morphology.square(2))
+    prediction = morphology.remove_small_objects(prediction, size_limit)
     return prediction
 
 
 @memory.cache
-def make_pred(img_path, model_name, stride):
+def predict_path(img_path, model_name, stride, scale=1.0):
     model = keras.models.load_model(
         c.MODEL_DIR / f"unet/{model_name}.h5",
         custom_objects={"my_loss": my_loss, "iou": iou},
         compile=False,
     )
     img = imread(img_path)
+    if scale != 1.0:
+        img = rescale(img, scale, preserve_range=True, multichannel=True)
 
+    pred = predict_image(img, model, stride)
+    if scale != 1.0:
+        pred = rescale(pred, 1 / scale, preserve_range=True, multichannel=False)
+    return pred
+
+
+def predict_image(img, model, stride):
     b_width = int(np.sqrt(c.BATCH_SIZE))
     pred = np.zeros(img.shape[0:2])
     norm_mat = np.ones_like(pred)
@@ -112,7 +123,7 @@ def make_pred(img_path, model_name, stride):
             batch_patch = np.zeros((b_width * c.HEIGHT, b_width * c.HEIGHT, c.CHANNELS))
             batch_patch[: img_patch.shape[0], : img_patch.shape[1]] = img_patch
             batch = _reshape_to_batch(batch_patch)
-            pred_batch = model.predict(batch)[..., 1]
+            pred_batch = model.predict_on_batch(batch)[..., 1]
             K.clear_session()
             pred_patch = _reshape_to_patch(pred_batch)
             pred[y : y + b_width * c.HEIGHT, x : x + b_width * c.WIDTH] += pred_patch[
@@ -133,15 +144,14 @@ def make_pred_dataframe(key, mask, image):
     """Takes an image id  and a mask
     and returns a dataframe with all cells"""
 
-    classes = ["tumor", "immunes cells"]
+    classes = ["tumor", "immune cells"]
     with open(c.MODEL_DIR / "cell_classifier.pickle", "rb") as f:
         features, model = pickle.load(f)
-    d = []
-    for obj in get_objects(mask):
-        m = mask[obj]
-        d.append({"image_id": key, "obj": obj, "mask": m})
 
-    df_pred = pd.DataFrame(d)
+    df_pred = pd.DataFrame(
+        [{"image_id": key, "obj": obj, "mask": mask[obj]} for obj in get_objects(mask)]
+    )
+
     df_pred["avg_brightness"], df_pred["var_brightness"] = avg_brightness(
         df_pred["image_id"], df_pred["mask"], df_pred["obj"], {key: image}
     )
@@ -154,41 +164,41 @@ def make_pred_dataframe(key, mask, image):
 def cell_locations(df: pd.DataFrame):
     return (
         df["obj"]
-        .apply(lambda x: ((x[0].start + x[0].stop) / 2, (x[1].start + x[1].stop) / 2))
+        .apply(
+            lambda x: np.array(
+                [(x[0].start + x[0].stop) / 2, (x[1].start + x[1].stop) / 2],
+                dtype=np.int16,
+            )
+        )
         .values
     )
 
 
 def make_patient_dataframe(df_pred):
     """ Returns a dataframe with one row for every image. """
-    d = []
-    for image_id in df_pred["image_id"].unique():
-        df_imid = df_pred[df_pred["image_id"] == image_id]
-        d.append(
+    return pd.DataFrame(
+        [
             {
-                "image_id": image_id,
-                "n_tumor": len(df_imid[df_imid["class_name"] == "tumor"].index),
-                "n_immune": len(df_imid[df_imid["class_name"] == "immune cells"].index),
-                "tumor_loc": cell_locations(df_imid[df_imid["class_name"] == "tumor"]),
-                "immune_loc": cell_locations(
-                    df_imid[df_imid["class_name"] == "immune cells"]
-                ),
-                "tumor_area": df_imid[df_imid["class_name"] == "tumor"]["size"].sum(),
-                "immune_area": df_imid[df_imid["class_name"] == "immune cells"][
-                    "size"
-                ].sum(),
-                "tumor_obj" : df_imid[df_imid["class_name"] == "tumor"]["obj"],
-                "immune_obj" : df_imid[df_imid["class_name"] == "immune cells"]["obj"],
+                "image_id": imid,
+                "n_tumor": len(df[df["class_name"] == "tumor"].index),
+                "n_immune": len(df[df["class_name"] == "immune cells"].index),
+                "tumor_loc": cell_locations(df[df["class_name"] == "tumor"]),
+                "immune_loc": cell_locations(df[df["class_name"] == "immune cells"]),
+                "tumor_area": df[df["class_name"] == "tumor"]["size"].sum(),
+                "immune_area": df[df["class_name"] == "immune cells"]["size"].sum(),
+                "tumor_obj": df[df["class_name"] == "tumor"]["obj"],
+                "immune_obj": df[df["class_name"] == "immune cells"]["obj"],
             }
-        )
-    return pd.DataFrame(d)
+            for imid, df in df_pred.groupby("image_id")
+        ]
+    )
 
 
 @click.command()
 @click.option("--source", "-s", type=click.Path())
 @click.option("--destination", "-d", type=click.Path())
 @click.option("--model_name", "-m")
-def predict_folder(source, destination, model_name):
+def predic_wsi(source, destination, model_name):
 
     model = keras.models.load_model(
         c.MODEL_DIR / f"unet/{model_name}.h5",
@@ -203,4 +213,69 @@ def predict_folder(source, destination, model_name):
 
 
 if __name__ == "__main__":
-    predict_folder()
+    from weighted_loss_unet import *
+    from dataset import TNBCWSI
+    from time import time
+    import os 
+    import sys
+    import shutil
+
+    start_time = time()
+    limit = 200
+
+    def safe_save(df, destination):
+        tmp = Path(__file__).parent / '.tmp.pickle'
+        df_pat.to_pickle(tmp)
+        shutil.copy(tmp, destination)
+
+    def iou():
+        pass
+
+    c = config.Config()
+
+    tnbc = TNBCWSI()
+    cutoff = 0.05
+    size_limit = 5
+    model_name = "unet_quip_10000"
+    scale = 1.0
+    stride = int(3 * c.HEIGHT / 2)
+    n_samples = 200
+
+    destination = (
+        Path(__file__).parent
+        / f"wsi_{model_name}_{cutoff}_{size_limit}_{scale}_{n_samples}.pickle"
+    )
+
+    model = keras.models.load_model(
+        c.MODEL_DIR / f"unet/{model_name}.h5",
+        custom_objects={"my_loss": my_loss, "iou": iou},
+        compile=False,
+    )
+
+    started = os.path.exists(destination)
+
+    if started:
+        with open(destination) as f:
+            df_pat = pd.read_pickle(destination)
+    else:
+        df_pat = pd.DataFrame()
+
+    for imid in tqdm(tnbc.ids):
+        if started and imid in df_pat["image_id"].unique():
+            continue
+
+        for img in tnbc.patches(imid, n_samples):
+            pred = predict_image(img, model, stride)
+            mask = post_processing(pred, cutoff, size_limit)
+
+            if np.sum(mask):
+                try:
+                    df_cells = make_pred_dataframe(imid, mask, img)
+                    df_pat = pd.concat([df_pat, make_patient_dataframe(df_cells)])
+                except Exception as e:
+                    print(e)
+
+            gc.collect()
+        t0 = time()
+        safe_save(df_pat, destination)
+        print(time()-t0)

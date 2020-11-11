@@ -140,27 +140,6 @@ class TNBCWSI(Dataset):
     def __init__(self):
         super().__init__(Path(__file__).parent.parent / "data/tnbc_wsi/")
 
-    def _tissue_positions(self, slide : OpenSlide):
-        thumbnail = slide.get_thumbnail((100,100))
-        tissue = np.mean(thumbnail, axis=-1)/255 < 0.9
-        tissue = remove_small_objects(tissue, 200)
-        scale_factor = slide.dimensions[0] / thumbnail.size[0]
-        coords = np.where(tissue)
-        coords = [(c * scale_factor).astype(np.int) for c in coords]
-        coords = list(zip(*coords))
-        return coords
-
-    def load_image(self, image_id):
-        return OpenSlide(self.file_name(image_id))
-
-    def patches(self, image_id, n = 10, width = 1000) :
-        oslide = self.load_image(image_id)
-        coords = self._tissue_positions(oslide)
-        for y, x in random.choices(coords, k=n):
-            y, x = y - int(width/2), x - int(width/2)
-            yield np.array(oslide.read_region((x,y), 0, (width, width)))[..., :3]
-
-
 
 class Bns(Dataset):
     def __init__(self):

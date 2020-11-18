@@ -1,11 +1,9 @@
-from weighted_loss_unet import *
 from time import time
 import os
 import sys
 import shutil
 import click
 from pathlib import Path
-import keras
 import config
 from openslide import OpenSlide
 import pandas as pd
@@ -14,6 +12,8 @@ from skimage.morphology import remove_small_objects
 from skimage.transform import rescale
 import random
 import numpy as np
+import keras
+from weighted_loss_unet import *
 from predict import (
     predict_image,
     make_pred_dataframe,
@@ -26,7 +26,7 @@ c = config.Config()
 
 def safe_save(df: pd.DataFrame, location: Path):
     tmp = Path(__file__).parent / ".tmp.pickle"
-    df_pat.reset_index().to_feather(tmp)
+    df.reset_index().to_feather(tmp)
     shutil.copy(tmp, location)
 
 

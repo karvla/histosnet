@@ -101,14 +101,16 @@ class TNBC1(Dataset):
             self.annotations = json.load(f)
 
     def _bbox_to_slice(self, bbox):
-        return (slice(int(bbox[0][1]), int(bbox[1][1]), None), 
-                slice(int(bbox[0][0]), int(bbox[1][0]), None))
+        return (
+            slice(int(bbox[0][1]), int(bbox[1][1]), None),
+            slice(int(bbox[0][0]), int(bbox[1][0]), None),
+        )
 
     def _generate_mask(self, vertices):
         img = Image.new("L", (3000, 3000), 0)
         ImageDraw.Draw(img).polygon(vertices, outline=1, fill=1)
         (left, upper), (right, lower) = utils.bounding_box(vertices)
-        img = img.crop((left, upper, right+1, lower+1))
+        img = img.crop((left, upper, right + 1, lower + 1))
         return np.asarray(img)
 
     def get_annotation(self, patient_id: str):
@@ -122,8 +124,10 @@ class TNBC1(Dataset):
                     {
                         "class": cell["class"],
                         "image_id": key,
-                        "obj" : self._bbox_to_slice(utils.bounding_box(cell["vertices"])),
-                        "mask" : self._generate_mask(cell["vertices"])
+                        "obj": self._bbox_to_slice(
+                            utils.bounding_box(cell["vertices"])
+                        ),
+                        "mask": self._generate_mask(cell["vertices"]),
                     }
                 )
         return pd.DataFrame(data)

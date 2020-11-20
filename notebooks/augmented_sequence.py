@@ -11,7 +11,7 @@ from dataset import Dataset
 from typing import List
 
 import config
-from utils import fix_wmap_shape
+from utils import fix_wmap, class_weights
 
 c = config.Config()
 
@@ -39,6 +39,7 @@ class AugmentedSequence(Sequence):
         self.data_size = len(dataset.ids)
         self.img_width = c.WIDTH
         self.img_height = c.HEIGHT
+        self.class_weights = class_weights(dataset, self.data_size)
 
     def __len__(self):
         return self.data_size
@@ -55,7 +56,8 @@ class AugmentedSequence(Sequence):
 
         augmasks = [to_categorical(m.get_arr(), num_classes=3) for m in augmasks]
         augwmaps = [
-            fix_wmap_shape(m.get_arr(), (c.HEIGHT, c.WIDTH, 3)) for m in augwmaps
+            fix_wmap(w.get_arr(), m, self.class_weights)
+            for w, m in zip(augwmaps, augmasks)
         ]
 
         augims = np.asarray(augims)

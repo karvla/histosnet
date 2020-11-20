@@ -33,7 +33,9 @@ def my_loss(target, output):
         A tensor holding the aggregated loss.
 
     """
-    return -tf.reduce_sum(tf.cast(target, tf.float32) * output, len(output.get_shape()) - 1)
+    return -tf.reduce_sum(
+        tf.cast(target, tf.float32) * output, len(output.get_shape()) - 1
+    )
 
 
 def make_weighted_loss_unet(is_training=True):

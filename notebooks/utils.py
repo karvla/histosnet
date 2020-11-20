@@ -86,7 +86,7 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
     Numpy array
         Training weights. A 2D array of shape (image_height, image_width).
     """
-    mask = erode_mask(mask)  # only use inside-values
+    # mask = erode_mask(mask)  # only use inside-values
     w = np.zeros_like(mask, dtype=np.float32)
     win_shape = (mask.shape[0], win_size)
     for j in range(0, mask.shape[1], win_size):
@@ -110,7 +110,7 @@ def unet_weight_map(mask, win_size=100, w0=10, sigma=5):
                 * no_labels
             )
 
-    return w + mask
+    return w
 
 
 def parse_xml_annotation_file(filepath):
@@ -190,11 +190,22 @@ def bounding_box(vertices):
     return (min(x), min(y)), (max(x), max(y))
 
 
-def fix_wmap_shape(wmap, target_shape):
-    wmap = wmap.ravel()
+def fix_wmap(wmap, boundary_mask, class_weights):
+    boundary_mask[..., 0] *= class_weights[0]
+    boundary_mask[..., 1] *= class_weights[1]
+    boundary_mask[..., 2] *= class_weights[2]
 
-    #  weight map should only be applied to inside-values
-    ones = np.ones(wmap.shape)
-    wmap = np.array((ones, wmap, ones)).T
-    wmap = wmap.reshape(target_shape)
+    wmap = boundary_mask + np.stack((wmap, wmap, wmap), axis=-1)
     return wmap
+
+
+@memory.cache
+def class_weights(dataset, n_samples):
+    weights = np.array([0, 0, 0])
+    for imid in dataset.ids[:n_samples]:
+        mask = dataset.get_mask(imid)
+        weights[0] += np.sum(mask == 0)
+        weights[1] += np.sum(mask == 1)
+        weights[2] += np.sum(mask == 2)
+
+    return weights / (mask.size * n_samples)

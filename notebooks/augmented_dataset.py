@@ -11,25 +11,29 @@ from dataset import Dataset
 from time import time
 import tensorflow as tf
 import random
-from utils import fix_wmap_shape
+from utils import fix_wmap
 
 c = config.Config
 
 
 class AugmentedDataset(tf.data.Dataset):
-    def __new__(self, dataset, aug, num_samples=3, scale=1.0):
+    def __new__(self, dataset, aug, class_weights, num_samples=3, scale=1.0):
         return tf.data.Dataset.from_generator(
-            lambda: self.generator(self, dataset, aug, num_samples, scale),
+            lambda: self.generator(
+                self, dataset, aug, class_weights, num_samples, scale
+            ),
             output_types=((tf.dtypes.uint8, tf.dtypes.float32), tf.dtypes.uint8),
         )
 
-    def generator(self, dataset, aug, num_samples, scale):
+    def generator(self, dataset, aug, class_weights, num_samples, scale):
 
         imid = random.choice(dataset.ids)
         image = dataset.load_image(imid, scale)
 
         mask = dataset.get_mask(imid, scale)
         mask = remove_small_objects(mask, 5)
+
+        cw = class_weights
 
         s = 4
         split_h = lambda img: np.array_split(img, s, axis=1)
@@ -39,22 +43,22 @@ class AugmentedDataset(tf.data.Dataset):
                 mas = SegmentationMapsOnImage(mas, im.shape)
 
                 for i in range(num_samples):
-                    aug_pairs = [
-                        aug(image=im, segmentation_maps=mas) for i in range(100)
-                    ]
-                    aug_pairs = sorted(aug_pairs, key=lambda x: np.sum(x[1].get_arr()))[
-                        -c.BATCH_SIZE :
-                    ]
-
-                    augims, augmasks = zip(*aug_pairs)
+                    augims, augmasks = zip(
+                        *[
+                            aug(image=im, segmentation_maps=mas)
+                            for i in range(c.BATCH_SIZE)
+                        ]
+                    )
 
                     augwmaps = [
-                        fix_wmap_shape(
+                        fix_wmap(
                             utils.unet_weight_map(m.get_arr() > 0, c.WIDTH),
-                            (c.WIDTH, c.HEIGHT, 3),
+                            to_categorical(m.get_arr(), num_classes=3),
+                            cw,
                         )
                         for m in augmasks
                     ]
+
                     augmasks = [
                         to_categorical(m.get_arr(), num_classes=3) for m in augmasks
                     ]

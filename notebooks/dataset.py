@@ -21,25 +21,69 @@ from skimage.transform import rescale
 from skimage.morphology import remove_small_objects
 from indexing import get_quip_image_index, get_quip_annotation_index
 import random
+from utils import fix_wmap
+import imgaug.augmenters as iaa
+from imgaug.augmentables.segmaps import SegmentationMapsOnImage
+from imgaug.augmentables.heatmaps import HeatmapsOnImage
+from config import Config
+from keras.utils.np_utils import to_categorical
+from keras.utils import Sequence
 
-
+c = Config()
 memory = Memory("./cache", verbose=0)
 
 
-class Dataset:
+class Dataset(Sequence):
     def __init__(self, path: Path):
         self.path = path
         self.image_dir = path / "images"
         self.ids = np.array([Path(f).stem for f in os.listdir(self.image_dir)])
         self.ending = Path(os.listdir(self.image_dir)[0]).suffix
         self.name = path.stem
+        self.size = len(self.ids)
+        self.aug_size = self.size
+        self.aug = iaa.Sequential(
+            [
+                iaa.CropToFixedSize(width=c.WIDTH, height=c.HEIGHT),
+            ]
+        )
 
-    @property
-    def size(self):
-        return len(self.ids)
+    def __len__(self):
+        return self.aug_size
 
     def __getitem__(self, idx):
-        return self.load_image(self.ids[idx])
+        image_id = self.ids[idx % len(self.ids) - 1]
+
+        im = self.load_image(image_id)
+        mask = self.get_mask(image_id)
+        wmap = self.get_weight_map(image_id)
+
+        mask = SegmentationMapsOnImage(mask, im.shape)
+        wmap = HeatmapsOnImage(
+            wmap.astype(np.float32),
+            im.shape,
+        )
+
+        augims, augmasks, augwmaps = zip(
+            *[
+                self.aug(image=im, segmentation_maps=mask, heatmaps=wmap)
+                for i in range(c.BATCH_SIZE)
+            ]
+        )
+
+        augmasks = [to_categorical(m.get_arr(), num_classes=3) for m in augmasks]
+        augwmaps = [fix_wmap(w.get_arr()) for w, m in zip(augwmaps, augmasks)]
+
+        augims = np.asarray(augims)
+        augmasks = np.asarray(augmasks, dtype=np.float32)
+        augwmaps = np.asarray(augwmaps, dtype=np.float32)
+
+        # augmasks = np.asarray(augmasks).reshape(
+        #    (c.BATCH_SHAPE)
+        # )
+
+        # return (augims, np.ones_like(augims)), augmasks
+        return (augims, augwmaps), augmasks
 
     def file_name(self, image_id):
         return str(self.image_dir / f"{image_id}{self.ending}")
@@ -66,7 +110,7 @@ class Dataset:
 
     def make_split(self, factor=0.8):
         np.random.seed(0)
-        train_index = np.random.rand(self.size) < 0.8
+        train_index = np.random.rand(self.size) < factor
 
         train_set = copy(self)
         train_set.ids = self.ids[train_index]
@@ -137,7 +181,7 @@ class TNBC2(Dataset):
     """ 530 images without annotations """
 
     def __init__(self):
-        super().__init__(Path(__file__).parent.parent / "data/tnbc2/")
+        super().__init__(Path(__file__).parent.parent / "data/tnbc2/", training=False)
 
 
 class TNBCWSI(Dataset):

@@ -17,6 +17,7 @@ from keras.utils.np_utils import to_categorical
 import json
 import dataset
 from config import Config
+import staintools
 
 c = Config()
 
@@ -190,22 +191,38 @@ def bounding_box(vertices):
     return (min(x), min(y)), (max(x), max(y))
 
 
-def fix_wmap(wmap, boundary_mask, class_weights):
-    boundary_mask[..., 0] *= class_weights[0]
-    boundary_mask[..., 1] *= class_weights[1]
-    boundary_mask[..., 2] *= class_weights[2]
+def fix_wmap(wmap):
+    class_weights = np.ones((c.WIDTH, c.HEIGHT, c.CHANNELS))
+    class_weights *= c.CLASS_WEIGHTS[0]
+    class_weights *= c.CLASS_WEIGHTS[1]
+    class_weights *= c.CLASS_WEIGHTS[2]
 
-    wmap = boundary_mask + np.stack((wmap, wmap, wmap), axis=-1)
+    wmap = class_weights + np.stack((wmap, wmap, wmap), axis=-1)
     return wmap
 
 
-@memory.cache
-def class_weights(dataset, n_samples):
-    weights = np.array([0, 0, 0])
-    for imid in dataset.ids[:n_samples]:
+def class_weights(dataset):
+    return np.array([0.1, 0.7, 0.2])
+    weights = np.array([0.0, 0.0, 0.0])
+    for n, imid in enumerate(
+        tqdm(dataset.ids[0:100], desc="Calculating class weights")
+    ):
         mask = dataset.get_mask(imid)
         weights[0] += np.sum(mask == 0)
         weights[1] += np.sum(mask == 1)
         weights[2] += np.sum(mask == 2)
 
-    return weights / (mask.size * n_samples)
+    return weights / np.sum(weights)
+
+
+def fit_stain_normalizer(target):
+    global stain_normalizer
+    target = staintools.LuminosityStandardizer.standardize(target)
+    stain_normalizer = staintools.StainNormalizer(method="vahadane")
+    stain_normalizer.fit(target)
+
+
+def normalize_stain(img):
+    img = staintools.LuminosityStandardizer.standardize(img)
+    img = stain_normalizer.transform(img)
+    return img

@@ -7,7 +7,6 @@ from imgaug.augmentables.heatmaps import HeatmapsOnImage
 from skimage.morphology import remove_small_objects
 import config
 import utils
-from dataset import Dataset
 from time import time
 import tensorflow as tf
 import random
@@ -17,23 +16,20 @@ c = config.Config
 
 
 class AugmentedDataset(tf.data.Dataset):
-    def __new__(self, dataset, aug, class_weights, num_samples=3, scale=1.0):
+    def __new__(self, dataset, aug, num_samples=3, scale=1.0):
         return tf.data.Dataset.from_generator(
-            lambda: self.generator(
-                self, dataset, aug, class_weights, num_samples, scale
-            ),
+            lambda: self.generator(self, dataset, aug, num_samples, scale),
             output_types=((tf.dtypes.uint8, tf.dtypes.float32), tf.dtypes.uint8),
         )
 
-    def generator(self, dataset, aug, class_weights, num_samples, scale):
+    def generator(self, dataset, aug, num_samples, scale):
 
         imid = random.choice(dataset.ids)
         image = dataset.load_image(imid, scale)
+        # image = utils.normalize_stain(image)
 
         mask = dataset.get_mask(imid, scale)
         mask = remove_small_objects(mask, 5)
-
-        cw = class_weights
 
         s = 4
         split_h = lambda img: np.array_split(img, s, axis=1)
@@ -51,11 +47,7 @@ class AugmentedDataset(tf.data.Dataset):
                     )
 
                     augwmaps = [
-                        fix_wmap(
-                            utils.unet_weight_map(m.get_arr() > 0, c.WIDTH),
-                            to_categorical(m.get_arr(), num_classes=3),
-                            cw,
-                        )
+                        fix_wmap(utils.unet_weight_map(m.get_arr() > 0, c.WIDTH))
                         for m in augmasks
                     ]
 
@@ -70,3 +62,4 @@ class AugmentedDataset(tf.data.Dataset):
                     augmasks = np.asarray(augmasks).reshape(c.BATCH_SHAPE)
 
                     yield (augims, augwmaps), augmasks
+                    # yield (augims, np.ones_like(augims)), augmasks

@@ -181,7 +181,7 @@ class TNBC2(Dataset):
     """ 530 images without annotations """
 
     def __init__(self):
-        super().__init__(Path(__file__).parent.parent / "data/tnbc2/", training=False)
+        super().__init__(Path(__file__).parent.parent / "data/tnbc2/")
 
 
 class TNBCWSI(Dataset):

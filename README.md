@@ -4,6 +4,9 @@ This is the project for my ms thesis. The goal is to find new biomarkers for loc
 ## Project Overview
 The aim is to find new bio-markers in tissue images for assessing the outcome of patients diagnosed with TNBC. New biomarkers could be used to aid clinical decision making. High level features, such as the number immune, cells and their locations, are extracted from tissue images using machine learning. 
 
+![Alt text](./docs/overview.svg)
+<img src="./docs/overview.svg)">
+
 Two machine learning models are used. The first one, the cell detector, is used for detecting cells in tissue images. This model is a U-Net trained on a large set of public data. The output from this model is a segmentation map showing the location and mask of every cell. The second model, the cell classifier, is a logistic regression model that used an image and its mask to classify every detected cell as tumor cell or immune cell. The cell detector was trained on a small number of manually annotated samples.
 
 The amount of tumor cells and immune cells and their spacial distribution can then be extracted. These are the main features used in the search for bio-markers in a cohort of 221 TNBC patients.

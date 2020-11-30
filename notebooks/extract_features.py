@@ -26,14 +26,17 @@ c = config.Config()
 
 def safe_save(df: pd.DataFrame, location: Path):
     tmp = Path(__file__).parent / ".tmp.pickle"
-    df.reset_index().to_feather(tmp)
+    df.reset_index(drop=True).to_feather(tmp)
     shutil.copy(tmp, location)
 
+def mask(img):
+    mask = np.mean(img, axis=-1) / 255 < 0.9
+    mask = remove_small_objects(mask, 200)
+    return mask
 
 def tissue_positions(slide: OpenSlide):
-    thumbnail = slide.get_thumbnail((100, 100))
-    tissue = np.mean(thumbnail, axis=-1) / 255 < 0.9
-    tissue = remove_small_objects(tissue, 200)
+    thumbnail = slide.get_thumbnail((300, 300))
+    tissue = mask(thumbnail)
     scale_factor = slide.dimensions[0] / thumbnail.size[0]
     coords = np.where(tissue)
     coords = [(c * scale_factor).astype(np.int) for c in coords]
@@ -41,7 +44,7 @@ def tissue_positions(slide: OpenSlide):
     return coords
 
 
-def slide_patches(slide: OpenSlide, n=10, width=1000):
+def slide_patches(slide: OpenSlide, n=10, width=1024):
     coords = tissue_positions(slide)
     for y, x in random.choices(coords, k=n):
         y, x = y - int(width / 2), x - int(width / 2)

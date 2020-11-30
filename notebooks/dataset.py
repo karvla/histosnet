@@ -11,7 +11,6 @@ import json
 import nibabel as nib
 import numpy as np
 import regex as re
-from imantics import Polygons, Mask
 from PIL import Image, ImageDraw, ImageStat
 import pandas as pd
 from tqdm import tqdm

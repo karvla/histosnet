@@ -1,4 +1,4 @@
-name: SweBCG91RT-Net
+name: histos
 channels:
   - anaconda
   - conda-forge/label/cf201901
@@ -311,7 +311,6 @@ dependencies:
   - zstd=1.4.5=h9ceee32_0
   - pip:
     - cython==0.29.21
-    - detectron2==0.2.1+cu101
     - future==0.18.2
     - fvcore==0.1.2.post20200912
     - guppy3==3.1.0
@@ -326,7 +325,6 @@ dependencies:
     - itk-spcn==0.1.2
     - keras-preprocessing==1.1.2
     - lxml==4.5.2
-    - mask-rcnn==2.1
     - mock==4.0.2
     - numpy==1.18.5
     - opencv-python==4.4.0.44
@@ -340,4 +338,4 @@ dependencies:
     - tensorflow-gpu==2.3.1
     - xmljson==0.2.1
     - yacs==0.1.8
-prefix: /home/arvid/.conda/envs/SweBCG91RT-Net
+prefix: /home/arvid/.conda/envs/histos

@@ -40,7 +40,11 @@ def iou():
 
 
 def brightness_mean(im):
-    return np.nanmean(np.ravel(np.where(im != 0, im, np.nan)))
+    if np.isnan(im).any() or (im == 0).all():
+        return 0.0
+    else:
+        return im.sum() / (im > 0).astype(np.uint8).sum()
+    #return np.nanmean(np.ravel(np.where(im != 0, im, np.nan)))
 
 
 def brightness_var(im):
@@ -60,6 +64,7 @@ def avg_brightness(ids, masks, obj, image_dict):
         v = brightness_var(img)
 
         if m is None or v is None:
+            print("hej")
             avg.append(0)
             var.append(0)
         else:

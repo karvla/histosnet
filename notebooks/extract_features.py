@@ -30,23 +30,23 @@ def safe_save(df: pd.DataFrame, location: Path):
     shutil.copy(tmp, location)
 
 def mask(img):
-    mask = np.mean(img, axis=-1) / 255 < 0.9
-    mask = remove_small_objects(mask, 200)
+    img_mean = np.mean(img, axis=-1) / 255
+    mask = np.logical_and(0.1 < img_mean, img_mean < 0.9)
+    mask = remove_small_objects(mask, np.sum(mask)*0.1)
     return mask
 
 def tissue_positions(slide: OpenSlide):
-    thumbnail = slide.get_thumbnail((300, 300))
+    thumbnail = slide.get_thumbnail((1000, 1000))
     tissue = mask(thumbnail)
-    scale_factor = slide.dimensions[0] / thumbnail.size[0]
+    scale_factor = max(slide.dimensions) / max(thumbnail.size)
     coords = np.where(tissue)
     coords = [(c * scale_factor).astype(np.int) for c in coords]
     coords = list(zip(*coords))
     return coords
 
-
 def slide_patches(slide: OpenSlide, n=10, width=1024):
     coords = tissue_positions(slide)
-    for y, x in random.choices(coords, k=n):
+    for y, x in coords[::int(len(coords)/n)]:
         y, x = y - int(width / 2), x - int(width / 2)
         yield np.array(slide.read_region((x, y), 0, (width, width)))[..., :3]
 
@@ -141,11 +141,8 @@ def main(
             mask = post_processing(pred, cutoff, min_size)
 
             if np.sum(mask):
-                try:
-                    df_cells = make_pred_dataframe(image_id, mask, img)
-                    df_pat = pd.concat([df_pat, make_patient_dataframe(df_cells)])
-                except Exception as e:
-                    print(e)
+                df_cells = make_pred_dataframe(image_id, mask, img)
+                df_pat = pd.concat([df_pat, make_patient_dataframe(df_cells)])
         safe_save(df_pat, destination_file)
     print("...done!")
 

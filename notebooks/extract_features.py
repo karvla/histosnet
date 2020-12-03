@@ -9,6 +9,7 @@ from openslide import OpenSlide
 import pandas as pd
 from tqdm import tqdm
 from skimage.morphology import remove_small_objects
+from skimage.io import imread
 from skimage.transform import rescale
 import random
 import numpy as np
@@ -19,6 +20,7 @@ from predict import (
     make_pred_dataframe,
     make_patient_dataframe,
     post_processing,
+    predict_path
 )
 
 c = config.Config()
@@ -29,11 +31,13 @@ def safe_save(df: pd.DataFrame, location: Path):
     df.reset_index(drop=True).to_feather(tmp)
     shutil.copy(tmp, location)
 
+
 def mask(img):
     img_mean = np.mean(img, axis=-1) / 255
     mask = np.logical_and(0.1 < img_mean, img_mean < 0.9)
-    mask = remove_small_objects(mask, np.sum(mask)*0.1)
+    mask = remove_small_objects(mask, np.sum(mask) * 0.1)
     return mask
+
 
 def tissue_positions(slide: OpenSlide):
     thumbnail = slide.get_thumbnail((1000, 1000))
@@ -44,15 +48,12 @@ def tissue_positions(slide: OpenSlide):
     coords = list(zip(*coords))
     return coords
 
+
 def slide_patches(slide: OpenSlide, n=10, width=1024):
     coords = tissue_positions(slide)
-    for y, x in coords[::int(len(coords)/n)]:
+    for y, x in coords[:: int(len(coords) / n)]:
         y, x = y - int(width / 2), x - int(width / 2)
         yield np.array(slide.read_region((x, y), 0, (width, width)))[..., :3]
-
-
-def iou():
-    pass
 
 
 @click.command()
@@ -82,32 +83,15 @@ def iou():
 )
 @click.option(
     "--stride",
-    default=int(3 * c.HEIGHT / 2),
+    default= 256,
     help="Stride in pixels for segmentation prediction.",
 )
 @click.argument("source", type=click.Path())
-def main(
-    destination,
-    model_name,
-    cutoff,
-    min_size,
-    scale,
-    n_samples,
-    stride,
-    source,
-):
+@click.argument("image_type", type=click.Choice(["WSI", "TMA"]))
+def main(**kwargs):
+    image_type = kwargs["image_type"]
 
-    destination_file = (
-        Path(destination)
-        / f"wsi_{model_name}_{cutoff}_{min_size}_{scale}_{n_samples}.feather"
-    )
-
-    model = keras.models.load_model(
-        c.MODEL_DIR / f"unet/{model_name}.h5",
-        custom_objects={"my_loss": my_loss, "iou": iou},
-        compile=False,
-    )
-
+    destination_file = Path(kwargs["destination"]) / _file_name(**kwargs)
     started = os.path.exists(destination_file)
 
     if started:
@@ -118,33 +102,90 @@ def main(
         print("Starting feature extration..")
         df_pat = pd.DataFrame()
 
-    images = os.listdir(source)
-    for n, image_name in enumerate(images):
-        image_id = Path(image_name).stem
+    n_total = len(os.listdir(kwargs["source"]))
+    df_pat = pd.DataFrame()
+    for n, image_path in enumerate(Path(kwargs["source"]).iterdir()):
+        print(f"image {n} of {n_total}")
+
+        image_id = Path(image_path).name
         if started and image_id in df_pat["image_id"].unique():
             continue
 
-        slide = OpenSlide(os.path.join(source, image_name))
-        for img in tqdm(
-            slide_patches(slide, n_samples),
-            total=n_samples,
-            desc=f"image {n} of {len(images)}",
-        ):
+        if image_type == "WSI":
+            df_pat = pd.concat([df_pat, features_wsi(image_path, kwargs)])
+        elif image_type == "TMA":
+            df_pat = pd.concat([df_pat, features_tma(image_path, kwargs)])
+        else:
+            raise ValueError
 
-            if scale != 1.0:
-                img = rescale(img, scale, preserve_range=True, multichannel=True)
-                pred = predict_image(img, model, stride)
-                pred = rescale(pred, 1 / scale, preserve_range=True, multichannel=False)
-            else:
-                pred = predict_image(img, model, stride)
-
-            mask = post_processing(pred, cutoff, min_size)
-
-            if np.sum(mask):
-                df_cells = make_pred_dataframe(image_id, mask, img)
-                df_pat = pd.concat([df_pat, make_patient_dataframe(df_cells)])
         safe_save(df_pat, destination_file)
     print("...done!")
+
+
+def features_wsi(image_path, kwargs):
+    n_samples = kwargs["n_samples"]
+    scale = kwargs["scale"]
+    stride = kwargs["stride"]
+    cutoff = kwargs["cutoff"]
+    min_size = kwargs["min_size"]
+    model_name = kwargs["model_name"]
+
+    model = keras.models.load_model(
+        c.MODEL_DIR / f"unet/{model_name}.h5",
+        custom_objects={"my_loss": my_loss},
+        compile=False,
+    )
+
+    slide = OpenSlide(str(image_path))
+    df_pat = pd.DataFrame()
+    for img in tqdm(
+        slide_patches(slide, n_samples),
+        total=n_samples,
+    ):
+
+        if scale != 1.0:
+            img = rescale(img, scale, preserve_range=True, multichannel=True)
+            pred = predict_image(img, model, stride)
+            pred = rescale(pred, 1 / scale, preserve_range=True, multichannel=False)
+        else:
+            pred = predict_image(img, model, stride)
+
+        mask = post_processing(pred, cutoff, min_size)
+
+        if np.sum(mask):
+            df_cells = make_pred_dataframe(image_path.name, mask, img)
+            df_pat = pd.concat([df_pat, make_patient_dataframe(df_cells)])
+
+    return df_pat
+
+
+def features_tma(image_path, kwargs):
+    scale = kwargs["scale"]
+    stride = kwargs["stride"]
+    cutoff = kwargs["cutoff"]
+    min_size = kwargs["min_size"]
+    model_name = kwargs["model_name"]
+
+    pred = predict_path(image_path, model_name, stride, scale)
+    mask = post_processing(pred, cutoff, min_size)
+    img = imread(image_path)
+
+    if np.sum(mask):
+        df_cells = make_pred_dataframe(image_path.name, mask, img)
+        df_pat = make_patient_dataframe(df_cells)
+        return df_pat
+    else:
+        return pd.DataFrame()
+
+def _file_name(**kwargs):
+    if kwargs["image_type"] == "WSI":
+        return f"wsi_{kwargs['model_name']}_{kwargs['cutoff']}_{kwargs['min_size']}_{kwargs['scale']}_{kwargs['n_samples']}.feather"
+
+    elif kwargs["image_type"] == "TMA":
+        return f"tma_{kwargs['model_name']}_{kwargs['cutoff']}_{kwargs['min_size']}_{kwargs['scale']}.feather"
+    else:
+        raise ValueError
+
 
 
 if __name__ == "__main__":

@@ -31,7 +31,7 @@ This dataset was used by [(N. Peter 2017)](https://ieeexplore.ieee.org/document/
 * 40x magnification
 * 2758 cells annotated.
 
-### [Quip]()
+### Quip
 This dataset was created by [(L. Hou et al. 2020)](https://www.nature.com/articles/s41597-020-0528-1). It's very large. The slides are easiest downloaded using the [GDC Data Transfer Tool](https://gdc.cancer.gov/access-data/gdc-data-transfer-tool) with the manifest `data/quip/gdc_manifest.2020-09-29.txt`. The annotations have to be downloaded manually. Links to the annotation can be found here: [cancerimagingarchive.net](https://wiki.cancerimagingarchive.net/display/DOI/Dataset+of+Segmented+Nuclei+in+Hematoxylin+and+Eosin+Stained+Histopathology+Images)
 * 5 billion annotated cells for various cancer types, breast included.
 * 40x magnification.

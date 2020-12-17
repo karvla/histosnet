@@ -95,7 +95,7 @@ def _reshape_to_patch(batch):
 
 def post_processing(prediction, cutoff=0.1, size_limit=10):
     prediction = prediction > cutoff
-    prediction = morphology.dilation(prediction, morphology.square(2))
+    prediction = morphology.dilation(prediction, morphology.diamond(2))
     prediction = morphology.remove_small_objects(prediction, size_limit)
     return prediction
 

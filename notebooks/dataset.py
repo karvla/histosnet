@@ -211,7 +211,7 @@ class Bns(Dataset):
 
 
 class Quip(Dataset):
-    def __init__(self, n_cells_threshold=2000):
+    def __init__(self, n_min=2000, n_max=np.inf):
         self.path = Path(__file__).parent.parent / "data/quip"
         self.image_dir = self.path / "images"
         self.anno_dir = self.path / "annotations"
@@ -226,10 +226,15 @@ class Quip(Dataset):
                     [
                         (key, region)
                         for region, value in item.items()
-                        if value["n_cells"] > n_cells_threshold
+                        if n_min < value["n_cells"] < n_max 
                     ]
                 )
-
+        self.aug = iaa.Sequential(
+            [
+                iaa.CropToFixedSize(width=c.WIDTH, height=c.HEIGHT),
+            ]
+        )
+                
     @property
     def _anno_ids(self):
         return [Path(f.upper()).stem[:-8] for f in os.listdir(self.anno_dir)]

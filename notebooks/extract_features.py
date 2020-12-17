@@ -82,6 +82,11 @@ def slide_patches(slide: OpenSlide, n=10, width=1024):
     help="The number samples segmended from the whole slide image.",
 )
 @click.option(
+    "--size",
+    default=1024,
+    help="Size of each sample",
+)
+@click.option(
     "--stride",
     default= 256,
     help="Stride in pixels for segmentation prediction.",
@@ -90,7 +95,6 @@ def slide_patches(slide: OpenSlide, n=10, width=1024):
 @click.argument("image_type", type=click.Choice(["WSI", "TMA"]))
 def main(**kwargs):
     image_type = kwargs["image_type"]
-
     destination_file = Path(kwargs["destination"]) / _file_name(**kwargs)
     started = os.path.exists(destination_file)
 
@@ -103,7 +107,6 @@ def main(**kwargs):
         df_pat = pd.DataFrame()
 
     n_total = len(os.listdir(kwargs["source"]))
-    df_pat = pd.DataFrame()
     for n, image_path in enumerate(Path(kwargs["source"]).iterdir()):
         print(f"image {n} of {n_total}")
 
@@ -129,6 +132,7 @@ def features_wsi(image_path, kwargs):
     cutoff = kwargs["cutoff"]
     min_size = kwargs["min_size"]
     model_name = kwargs["model_name"]
+    size = kwargs["size"]
 
     model = keras.models.load_model(
         c.MODEL_DIR / f"unet/{model_name}.h5",
@@ -139,7 +143,7 @@ def features_wsi(image_path, kwargs):
     slide = OpenSlide(str(image_path))
     df_pat = pd.DataFrame()
     for img in tqdm(
-        slide_patches(slide, n_samples),
+        slide_patches(slide, n_samples, size),
         total=n_samples,
     ):
 

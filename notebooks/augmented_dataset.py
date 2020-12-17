@@ -22,6 +22,9 @@ class AugmentedDataset(tf.data.Dataset):
             output_types=((tf.dtypes.uint8, tf.dtypes.float32), tf.dtypes.uint8),
         )
 
+    def __len__(self):
+        return 10
+    
     def generator(self, dataset, aug, num_samples, scale):
 
         imid = random.choice(dataset.ids)

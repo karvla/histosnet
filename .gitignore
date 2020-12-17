@@ -8,3 +8,5 @@ notebooks/wandb/
 data/
 notebooks/.tmp*
 notebooks/models/*
+notebooks/*pickle
+notebooks/*feather
